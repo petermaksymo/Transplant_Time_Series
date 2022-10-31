@@ -5,29 +5,29 @@ library(tidyverse)
 library(data.table)
 
 #set this to your own working directory
-setwd("/home/osvald/Projects/Diagnostics/github/preprocessing")
+setwd("/home/peter/WebstormProjects/Transplant_Time_Series/Preprocessing")
 
 # configure these variables to load and save proper files
 # organ_list = c("li", "in", "kp", "ki", "pa", "hl", "hr", "lu")
 organ = "li"
 linked_organ = "liin"
-ori_file_txf = paste("data/txf_", organ, ".txt", sep="")
-ori_file_tx = paste("data/tx_", organ, ".txt", sep="")
-ori_file_cand = paste("data/cand_", linked_organ, ".txt", sep="")
-ori_file_immuno = paste("data/immuno.txt", sep="")
-ori_file_fol_immuno = paste("data/fol_immuno.txt", sep="")
+ori_file_txf = paste("data/txf_", organ, ".csv", sep="")
+ori_file_tx = paste("data/tx_", organ, ".csv", sep="")
+ori_file_cand = paste("data/cand_", linked_organ, ".csv", sep="")
+ori_file_immuno = paste("data/immuno.csv", sep="")
+ori_file_fol_immuno = paste("data/fol_immuno.csv", sep="")
 
 
 # load the original plain text files
-txf_li_prev = read.csv(ori_file_txf, header = T, sep = "|", stringsAsFactors = F, na.strings = "None",
+txf_li_prev = read.csv(ori_file_txf, header = T, sep = ",", stringsAsFactors = F, na.strings = "None",
                        quote = "")
-tx_li_prev = read.csv(ori_file_tx, header = T, sep = "|", stringsAsFactors = F, na.strings = "None",
+tx_li_prev = read.csv(ori_file_tx, header = T, sep = ",", stringsAsFactors = F, na.strings = "None",
                       quote = "")
-cand = read.csv(ori_file_cand, header = T, sep = "|", stringsAsFactors = F, na.strings = "None",
+cand = read.csv(ori_file_cand, header = T, sep = ",", stringsAsFactors = F, na.strings = "None",
                      quote = "")
-immuno = read.csv(ori_file_immuno, header = T, sep = "|", stringsAsFactors = F, na.strings = "None",
+immuno = read.csv(ori_file_immuno, header = T, sep = ",", stringsAsFactors = F, na.strings = "None",
                 quote = "")
-fol_immuno = read.csv(ori_file_fol_immuno, header = T, sep = "|", stringsAsFactors = F, na.strings = "None",
+fol_immuno = read.csv(ori_file_fol_immuno, header = T, sep = ",", stringsAsFactors = F, na.strings = "None",
                 quote = "")
 
 # filtering out multi+transplant patients
@@ -516,6 +516,7 @@ for (col in c("TFL_CARE_PROV_BY", "TFL_EMPL_STAT_PRE04",
 }
 
 
+tx_study$TFL_COD <- as.numeric(tx_study$TFL_COD)
 
 # merge tx and txf
 require("dplyr")
@@ -543,8 +544,8 @@ combined_data$Label5 <- rep(0, nrow(combined_data))
 # combined_data[combined_data$TRR_ID %in% inf_patients & !duplicated(combined_data$TRR_ID,fromLast=TRUE),]$DeathLabel <- 4
 
 ## time ##
-combined_data$time_since_transplant = difftime(combined_data$TFL_PX_STAT_DT, combined_data$REC_TX_DT, units = "days") / 365
-combined_data$time_to_death = difftime(combined_data$PERS_OPTN_DEATH_DT, combined_data$TFL_PX_STAT_DT, unit="days") / 365
+combined_data$time_since_transplant = difftime(as.Date(combined_data$TFL_PX_STAT_DT), as.Date(combined_data$REC_TX_DT), units = "days") / 365
+combined_data$time_to_death = difftime(as.Date(combined_data$PERS_OPTN_DEATH_DT), as.Date(combined_data$TFL_PX_STAT_DT), unit="days") / 365
 
 #### split years
 #combined_data$transfer_year =as.numeric(substring(combined_data$REC_TX_DT, 1, 4))

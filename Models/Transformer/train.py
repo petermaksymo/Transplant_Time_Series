@@ -16,13 +16,13 @@ from model import RT
 
 
 # before IS
-#train_path = '/home/osvald/Projects/Diagnostics/github/srtr_data/multi_label/selected/n_train_tensors/'
-#valid_path = '/home/osvald/Projects/Diagnostics/github/srtr_data/multi_label/selected/n_valid_tensors/'
-#save_path = '/home/osvald/Projects/Diagnostics/github/models/Transformer/clean/'
+train_path = '../../Preprocessing/data/processed_data/train_tensors/'
+valid_path = '../../Preprocessing/data/processed_data/valid_tensors/'
+save_path = '../../local_data/models/Transformer/clean/'
 #for transfer
-#train_path = '/home/osvald/Projects/Diagnostics/github/srtr_data/multi_label/UHN_transfer/n_train_tensors/'
-#valid_path = '/home/osvald/Projects/Diagnostics/github/srtr_data/multi_label/UHN_transfer/n_valid_tensors/'
-#save_path = '/home/osvald/Projects/Diagnostics/github/models/transfer/Transformer/'
+#train_path = '../../local_data/srtr_data/multi_label/UHN_transfer/n_train_tensors/'
+#valid_path = '../../local_data/srtr_data/multi_label/UHN_transfer/n_valid_tensors/'
+#save_path = '../../local_data/models/transfer/Transformer/'
 
 ######## __GENERAL__ ########
 parser = argparse.ArgumentParser(description='training control')
@@ -66,9 +66,9 @@ parser.add_argument('--b2', action='store', default=0.999, type=float,
                     help='momentum')
 args = parser.parse_args()
 
-train_path = '/home/osvald/Projects/Diagnostics/github/srtr_data/immuno/CV' + str(args.cv) + '/n_train_tensors/'
-valid_path = '/home/osvald/Projects/Diagnostics/github/srtr_data/immuno/CV' + str(args.cv) + '/n_valid_tensors/'
-save_path = '/home/osvald/Projects/Diagnostics/github/models/Transformer/CV' + str(args.cv) + '/IS/'
+# train_path = '../../local_data/srtr_data/immuno/CV' + str(args.cv) + '/n_train_tensors/'
+# valid_path = '../../local_data/srtr_data/immuno/CV' + str(args.cv) + '/n_valid_tensors/'
+# save_path = '../../local_data/models/Transformer/CV' + str(args.cv) + '/IS/'
 
 ######## __GPU_SETUP__ ########
 if not args.disable_cuda and torch.cuda.is_available():
@@ -113,9 +113,17 @@ def train(weights):
             prob = outputs.data[i][:int(seq_len[i])].cpu().numpy()
 
             prediction = np.zeros(targets.shape)
-            prediction[np.arange(prediction.shape[0]), np.argmax(prob, axis=1)] = 1
+            # prediction[np.arange(prediction.shape[0]), np.argmax(prob[:, :5], axis=1)] = 1
+            # prediction[np.arange(prediction.shape[0]), np.argmax(prob[:, 5:], axis=1)+5] = 1
+            prediction = prob > 0.5
             match = (targets == prediction)
-            
+
+
+            # print('prob', prob)
+            # print('targets', targets)
+            # print('prediction', prediction)
+            # print('match', match)
+
             pos += np.sum(prediction,axis=0).astype(int)
             correct += np.sum(match,axis=0).astype(int)
             total += targets.shape[0]
@@ -163,7 +171,10 @@ def valid(weights):
                 prob = outputs.data[i][:int(seq_len[i])].cpu().numpy()
 
                 prediction = np.zeros(targets.shape)
-                prediction[np.arange(prediction.shape[0]), np.argmax(prob, axis=1)] = 1
+                # prediction[np.arange(prediction.shape[0]), np.argmax(prob, axis=1)] = 1
+                # prediction[np.arange(prediction.shape[0]), np.argmax(prob[:, :5], axis=1)] = 1
+                # prediction[np.arange(prediction.shape[0]), np.argmax(prob[:, 5:], axis=1) + 5] = 1
+                prediction = prob > 0.5
                 match = (targets == prediction)
                 
                 pos += np.sum(prediction,axis=0).astype(int)
@@ -198,6 +209,7 @@ if __name__ == '__main__':
     save_path = save_path + arch_name + '/' + opt_name + '/'
     model_name = arch_name + '/' + opt_name
 
+    print('training data setup')
     ''' training data setup '''
     if args.cv == 1 or args.cv == 2 or args.cv == 3:
         valid_indices = list(range(4214))
@@ -205,20 +217,24 @@ if __name__ == '__main__':
         valid_indices = list(range(4215))
     else:
         valid_indices = list(range(4213))
-    v_weights = get_valid_weights(valid_indices, valid_path)
-    t_weights = get_train_weights(train_path)
+    valid_indices = list(range(8283))
+    v_weights = get_valid_weights(valid_indices, valid_path, False)
+    t_weights = get_train_weights(train_path, False)
 
+    print('init transformer')
     '''Transformer'''
     model = RT(input_size=190, d_model=args.dim, output_size=10, h=args.heads, rnn_type='RNN',
-                ksize=args.ksize, n=args.rnn, n_level=args.levels, dropout=args.drop).to(args.device)
-
+                ksize=args.ksize, n=args.rnn, n_level=args.levels, dropout=args.drop, device=args.device).to(args.device)
+    print('criterion')
     criterion = nn.BCELoss(reduction='none')
-    
 
+    print('optimizer')
     optimizer = optim.Adam(model.parameters(), lr=args.lr, betas=(args.b1, args.b2), weight_decay=args.l2)
+    print('scheduler')
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=10, factor=0.1, verbose=False)
 
 
+    print('init trackers')
     # loss tracker
     train_losses = np.zeros(args.epochs)
     val_losses = np.zeros(args.epochs)
@@ -234,11 +250,13 @@ if __name__ == '__main__':
 
     # val data same every epoch
     val_data = Dataset(valid_indices, valid_path)
-    val_loader = DataLoader(val_data, batch_size=args.batch, shuffle=True, collate_fn=collate_fn)
+    val_loader = DataLoader(val_data, batch_size=args.batch, shuffle=True, collate_fn=collate_fn, generator=torch.Generator(device='cuda'))
 
     start = time.time()
+    print('starting...')
     for epoch in range(args.epochs):
         train_loader = make_train_loader(train_path, batch_size=args.batch, shuffle=True, collate_fn=collate_fn, cv=args.cv)
+        print('made train loader')
         model.train()
         train(t_weights)
         model.eval()

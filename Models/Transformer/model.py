@@ -6,12 +6,13 @@ sys.path.append(os.path.join(base_path,'../models'))
 from RTransformer import RTransformer 
 
 class RT(nn.Module):
-    def __init__(self, input_size, d_model, output_size, h, rnn_type, ksize, n, n_level, dropout):
+    def __init__(self, input_size, d_model, output_size, h, rnn_type, ksize, n, n_level, dropout, device):
         super(RT, self).__init__()
         self.encoder = nn.Linear(input_size, d_model)
-        self.rt = RTransformer(d_model, rnn_type, ksize, n_level, n, h, dropout)
+        self.rt = RTransformer(d_model, rnn_type, ksize, n_level, n, h, dropout, device)
         self.linear = nn.Linear(d_model, output_size)
         self.sig = nn.Sigmoid()
+        self.device = device
 
     def forward(self, x):
         x = self.encoder(x)

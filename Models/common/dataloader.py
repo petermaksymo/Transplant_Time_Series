@@ -20,7 +20,9 @@ class Dataset(data.Dataset):
             # Select sample
             ID = str(self.IDs[index])
             x = torch.load(self.path + ID + '.pt')
+            # x = torch.rand((2, 203))
 
+            # EXPECT: x rows by 203 colums, 0-189 are features, 190-194 is 5 year outlook results, 195-199 is 1 year outlook results
             #y = x[:, -13:-8] # 5 year outlook
             #y = x[:, -8:-3] # 1 year outlook
             y = x[:, -13:-3] # 5 year and 1 year outlook
@@ -61,24 +63,34 @@ def make_train_loader(train_path, batch_size, shuffle, collate_fn, small=False, 
             end = 33716
       elif cv==5:
             end = 33718
+
+      end = 28013
       if small:
             # equal amount of patients from each class = |smallest class|
-            train_indices = list(range(27499, 29371))                       # class 1 & 2
-            train_indices.extend(random.sample(range(0, 27499), 1000))       # class 0
-            train_indices.extend(random.sample(range(29371, 31623), 1000))  # class 3
-            train_indices.extend(random.sample(range(31623, end), 1000))  # class 4
+            # train_indices = list(range(27499, 29371))                       # class 1 & 2
+            # train_indices.extend(random.sample(range(0, 27499), 1000))       # class 0
+            # train_indices.extend(random.sample(range(29371, 31623), 1000))  # class 3
+            # train_indices.extend(random.sample(range(31623, end), 1000))  # class 4
+            train_indices = list(range(22852, 24361))                       # class 1 & 2
+            train_indices.extend(random.sample(range(0, 22852), 1000))       # class 0
+            train_indices.extend(random.sample(range(24361, 25267), 1000))  # class 3
+            train_indices.extend(random.sample(range(25267, end), 1000))  # class 4
 
             train_data = Dataset(train_indices, train_path)
-            return DataLoader(train_data, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
+            return DataLoader(train_data, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn, generator=torch.Generator(device='cuda'))
       else:
             # equal amount of patients from each class = |largest class|
-            train_indices = list(range(27499, 29371)) * 2                  # class 1 & 2
-            train_indices.extend(random.sample(range(0, 27499), 2000))      # class 0
-            train_indices.extend(list(range(29371, 31623)))                 # class 3
-            train_indices.extend(list(range(31623, end)))                 # class 4
+            # train_indices = list(range(27499, 29371)) * 2  # class 1 & 2
+            # train_indices.extend(random.sample(range(0, 27499), 2000))  # class 0
+            # train_indices.extend(list(range(29371, 31623)))  # class 3
+            # train_indices.extend(list(range(31623, end)))  # class 4
+            train_indices = list(range(22852, 24361)) * 2  # class 1 & 2
+            train_indices.extend(random.sample(range(0, 22852), 2000))  # class 0
+            train_indices.extend(list(range(24361, 25267)))  # class 3
+            train_indices.extend(list(range(25267, end)))  # class 4
 
             train_data = Dataset(train_indices, train_path)
-            return DataLoader(train_data, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
+            return DataLoader(train_data, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn, generator=torch.Generator(device='cuda'))
 
 def get_train_weights(train_path, precomputed=True):
       if precomputed:
@@ -125,7 +137,7 @@ def get_valid_weights(valid_indices, valid_path, precomputed=True):
             return neg_weights, multiplier
 
       val_data = Dataset(valid_indices, valid_path)
-      val_loader = DataLoader(val_data, batch_size=1024, shuffle=True, collate_fn=collate_fn)
+      val_loader = DataLoader(val_data, batch_size=1024, shuffle=True, collate_fn=collate_fn, generator=torch.Generator(device='cuda'))
 
       pos_l = np.zeros((10))
       neg_l = np.zeros((10))
