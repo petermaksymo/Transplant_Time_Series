@@ -14,9 +14,9 @@ from common.util import auc_plotter, show_prog, save_prog, get_aucs
 from common.dataloader import Dataset, collate_fn, make_train_loader, get_train_weights, get_valid_weights
 from TCN_attn import DynamicTCN
 
-train_path = '/home/osvald/Projects/Diagnostics/github/srtr_data/immuno/CV1/n_train_tensors/'
-valid_path = '/home/osvald/Projects/Diagnostics/github/srtr_data/immuno/CV1/n_valid_tensors/'
-save_path = '/home/osvald/Projects/Diagnostics/github/models/TCN/IS/'
+train_path = '../../Preprocessing/data/processed_data/train_tensors/'
+valid_path = '../../Preprocessing/data/processed_data/valid_tensors/'
+save_path = '../../local_data/models/Transformer/clean/'
 
 ######## __GENERAL__ ########
 parser = argparse.ArgumentParser(description='training control')
@@ -188,9 +188,21 @@ if __name__ == '__main__':
     
 
     ''' training data setup '''
-    valid_indices = list(range(4214))
-    v_weights = get_valid_weights(valid_indices, valid_path)
-    t_weights = get_train_weights(train_path)
+    valid_indices = list(range(3500))
+    v_weights = get_valid_weights(valid_indices, valid_path, True)
+    t_weights = get_train_weights(train_path, True)
+
+    '''pre-load datasets'''
+    train_data = []
+    for class_name in ['lived', 'cardio', 'gf', 'cancer', 'inf']:
+        for file in sorted(os.listdir(train_path + class_name), key=lambda x: int(x.split('.')[0])):
+            train_data.append(torch.load(f'{train_path}{class_name}/{file}').to(args.device))
+    val_data = []
+    for class_name in ['lived', 'cardio', 'gf', 'cancer', 'inf']:
+        for file in sorted(os.listdir(valid_path + class_name), key=lambda x: int(x.split('.')[0])):
+            val_data.append(torch.load(f'{valid_path}{class_name}/{file}').to(args.device))
+
+    print(f'length of train: {len(train_data)}, length of valid: {len(val_data)}')
 
     '''TCN'''
     model = DynamicTCN(input_size=190, output_size=10, num_channels=args.layers, fcl=args.fcl,
@@ -216,12 +228,12 @@ if __name__ == '__main__':
     val_auc = np.zeros((args.epochs, 10))
 
     # val data same every epoch
-    val_data = Dataset(valid_indices, valid_path)
-    val_loader = DataLoader(val_data, batch_size=args.batch, shuffle=True, collate_fn=collate_fn)
+    val_dataset = Dataset(valid_indices, val_data)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch, shuffle=True, collate_fn=collate_fn, generator=torch.Generator(device='cuda'))
 
     start = time.time()
     for epoch in range(args.epochs):
-        train_loader = make_train_loader(train_path, batch_size=args.batch, shuffle=True, collate_fn=collate_fn)
+        train_loader = make_train_loader(train_path, train_data, batch_size=args.batch, shuffle=True, collate_fn=collate_fn)
         model.train()
         train(t_weights)
         model.eval()

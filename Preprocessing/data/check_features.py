@@ -1,5 +1,6 @@
 import pandas as pd
 import torch
+import os
 
 FEATURE_LIST = [
     'TX_ACUTE_REJ_EPISODE', 'REC_LIFE_SUPPORT_OTHER', 'CAN_AGE_AT_LISTING', 'CAN_GENDER',
@@ -51,9 +52,30 @@ FEATURE_LIST = [
 
 # CAN_LAST_SRTR_LAB_MELD may need to be encoded to something
 
+'''
+    processed data
+        -> training
+            -> class 0
+            -> class 1
+            ...
+            -> class 4
+        -> validation
+        -> holdout
+        
+    all data saved in memory, subset sampled each epoch
+'''
+
+CLASSES = ['lived', 'cardio', 'gf', 'cancer', 'inf']
+
 if __name__ == '__main__':
     print('started')
-    df = pd.read_csv('./combined_data.csv')
+    path = 'processed_data/train_tensors/'
+
+    for class_name in CLASSES:
+        for files in sorted(os.listdir(path+class_name), key=lambda x: int(x.split('.')[0])):
+            print(files)
+
+
 
     columns = list(df.columns)
     print(len(set(columns).intersection(FEATURE_LIST)))

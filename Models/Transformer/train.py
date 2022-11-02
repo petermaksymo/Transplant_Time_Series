@@ -113,9 +113,9 @@ def train(weights):
             prob = outputs.data[i][:int(seq_len[i])].cpu().numpy()
 
             prediction = np.zeros(targets.shape)
-            # prediction[np.arange(prediction.shape[0]), np.argmax(prob[:, :5], axis=1)] = 1
-            # prediction[np.arange(prediction.shape[0]), np.argmax(prob[:, 5:], axis=1)+5] = 1
-            prediction = prob > 0.5
+            prediction[np.arange(prediction.shape[0]), np.argmax(prob[:, :5], axis=1)] = 1
+            prediction[np.arange(prediction.shape[0]), np.argmax(prob[:, 5:], axis=1)+5] = 1
+            # prediction = prob > 0.5
             match = (targets == prediction)
 
 
@@ -172,9 +172,9 @@ def valid(weights):
 
                 prediction = np.zeros(targets.shape)
                 # prediction[np.arange(prediction.shape[0]), np.argmax(prob, axis=1)] = 1
-                # prediction[np.arange(prediction.shape[0]), np.argmax(prob[:, :5], axis=1)] = 1
-                # prediction[np.arange(prediction.shape[0]), np.argmax(prob[:, 5:], axis=1) + 5] = 1
-                prediction = prob > 0.5
+                prediction[np.arange(prediction.shape[0]), np.argmax(prob[:, :5], axis=1)] = 1
+                prediction[np.arange(prediction.shape[0]), np.argmax(prob[:, 5:], axis=1) + 5] = 1
+                # prediction = prob > 0.5
                 match = (targets == prediction)
                 
                 pos += np.sum(prediction,axis=0).astype(int)
@@ -209,32 +209,32 @@ if __name__ == '__main__':
     save_path = save_path + arch_name + '/' + opt_name + '/'
     model_name = arch_name + '/' + opt_name
 
-    print('training data setup')
-    ''' training data setup '''
-    if args.cv == 1 or args.cv == 2 or args.cv == 3:
-        valid_indices = list(range(4214))
-    elif args.cv == 4:
-        valid_indices = list(range(4215))
-    else:
-        valid_indices = list(range(4213))
-    valid_indices = list(range(8283))
-    v_weights = get_valid_weights(valid_indices, valid_path, False)
-    t_weights = get_train_weights(train_path, False)
+    '''pre-load datasets'''
+    train_data = []
+    for class_name in ['lived', 'cardio', 'gf', 'cancer', 'inf']:
+        for file in sorted(os.listdir(train_path + class_name), key=lambda x: int(x.split('.')[0])):
+            train_data.append(torch.load(f'{train_path}{class_name}/{file}'))
+    val_data = []
+    for class_name in ['lived', 'cardio', 'gf', 'cancer', 'inf']:
+        for file in sorted(os.listdir(valid_path + class_name), key=lambda x: int(x.split('.')[0])):
+            val_data.append(torch.load(f'{valid_path}{class_name}/{file}'))
 
-    print('init transformer')
+    print(f'length of train: {len(train_data)}, length of valid: {len(val_data)}')
+
+    ''' training data setup '''
+    valid_indices = list(range(len(val_data)))
+    v_weights = get_valid_weights(valid_indices, val_data, False)
+    t_weights = get_train_weights(train_path, train_data, False)
+
     '''Transformer'''
     model = RT(input_size=190, d_model=args.dim, output_size=10, h=args.heads, rnn_type='RNN',
                 ksize=args.ksize, n=args.rnn, n_level=args.levels, dropout=args.drop, device=args.device).to(args.device)
-    print('criterion')
     criterion = nn.BCELoss(reduction='none')
 
-    print('optimizer')
     optimizer = optim.Adam(model.parameters(), lr=args.lr, betas=(args.b1, args.b2), weight_decay=args.l2)
-    print('scheduler')
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=10, factor=0.1, verbose=False)
 
 
-    print('init trackers')
     # loss tracker
     train_losses = np.zeros(args.epochs)
     val_losses = np.zeros(args.epochs)
@@ -249,14 +249,13 @@ if __name__ == '__main__':
     val_auc = np.zeros((args.epochs, 10))
 
     # val data same every epoch
-    val_data = Dataset(valid_indices, valid_path)
-    val_loader = DataLoader(val_data, batch_size=args.batch, shuffle=True, collate_fn=collate_fn, generator=torch.Generator(device='cuda'))
+    val_dataset = Dataset(valid_indices, val_data)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch, shuffle=True, collate_fn=collate_fn,
+                            generator=torch.Generator(device='cuda'))
 
     start = time.time()
-    print('starting...')
     for epoch in range(args.epochs):
-        train_loader = make_train_loader(train_path, batch_size=args.batch, shuffle=True, collate_fn=collate_fn, cv=args.cv)
-        print('made train loader')
+        train_loader = make_train_loader(train_path, train_data, batch_size=args.batch, shuffle=True, collate_fn=collate_fn, cv=args.cv)
         model.train()
         train(t_weights)
         model.eval()

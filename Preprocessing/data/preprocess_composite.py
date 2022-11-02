@@ -5,6 +5,7 @@ import numpy as np
 import re
 import os
 import torch
+from pathlib import Path
 from sklearn.model_selection import train_test_split
 
 FEATURE_LIST = [
@@ -46,6 +47,8 @@ FEATURE_LIST = [
     'TFL_MALIG_TUMOR', 'TFL_PX_NONCOMP', 'TFL_REJ_TREAT', 'REC_DGN_4220',
     'REC_DGN_4217', 'REC_DGN_4455', 'REC_DGN_4500'
 ]
+
+CLASSES = ['lived', 'cardio', 'gf', 'cancer', 'inf']
 
 if __name__ == '__main__':
     prev_tx_li = pd.read_csv("./tx_li.csv", index_col=0, low_memory=False)
@@ -96,12 +99,12 @@ if __name__ == '__main__':
     prev_txf_li = prev_txf_li[(prev_txf_li['REC_TX_DT'] >= '2002-01-01') & (prev_txf_li['REC_TX_DT'] <= '2014-09-30')]
     print(f"Number of patients after filtering pre 2002, post Sept 30, 2014: {prev_txf_li['TRR_ID'].nunique()}")
 
-    # Remove follow-ups past 5 years after transplant
-    prev_txf_li['fol_yr'] = pd.to_numeric(prev_txf_li['TFL_PX_STAT_DT'].str[:4])
-    prev_txf_li['rec_yr'] = pd.to_numeric(prev_txf_li['REC_TX_DT'].str[:4])
-    prev_txf_li = prev_txf_li[prev_txf_li.apply(lambda row:
-                                                True if (row['rec_yr']+6 >= row['fol_yr']) else False, axis=1)]
-    prev_txf_li.drop('rec_yr', axis=1, inplace=True)
+    # # Remove follow-ups past 5 years after transplant
+    # prev_txf_li['fol_yr'] = pd.to_numeric(prev_txf_li['TFL_PX_STAT_DT'].str[:4])
+    # prev_txf_li['rec_yr'] = pd.to_numeric(prev_txf_li['REC_TX_DT'].str[:4])
+    # prev_txf_li = prev_txf_li[prev_txf_li.apply(lambda row:
+    #                                             True if (row['rec_yr']+6 >= row['fol_yr']) else False, axis=1)]
+    # prev_txf_li.drop('rec_yr', axis=1, inplace=True)
 
     # fill COD values
     prev_txf_li['TFL_COD'] = prev_txf_li.groupby('TRR_ID')['TFL_COD'].transform('last')
@@ -114,27 +117,24 @@ if __name__ == '__main__':
                 & (prev_txf_li['TFL_COD2'].isna())
                 & (prev_txf_li['TFL_COD3'].isna())]['TRR_ID'].unique()
 
-    cardio_patients = get_cod_patients(cardio_codes)
-    cancer_patients = get_cod_patients(malig_codes)
-    gf_patients = get_cod_patients(gf_codes)
-    inf_patients = get_cod_patients(inf_codes)
-    lived_patients = prev_txf_li[(prev_txf_li['TFL_COD'].isna())
-                                 & (~prev_txf_li['TRR_ID'].isin(cardio_patients))
-                                 & (~prev_txf_li['TRR_ID'].isin(cancer_patients))
-                                 & (~prev_txf_li['TRR_ID'].isin(gf_patients))
-                                 & (~prev_txf_li['TRR_ID'].isin(inf_patients))]['TRR_ID'].unique()
+    patients = {}
+    patients['cardio'] = get_cod_patients(cardio_codes)
+    patients['cancer'] = get_cod_patients(malig_codes)
+    patients['gf'] = get_cod_patients(gf_codes)
+    patients['inf'] = get_cod_patients(inf_codes)
+    patients['lived'] = prev_txf_li[(prev_txf_li['TFL_COD'].isna())
+                                 & (~prev_txf_li['TRR_ID'].isin(patients['cardio']))
+                                 & (~prev_txf_li['TRR_ID'].isin(patients['cancer']))
+                                 & (~prev_txf_li['TRR_ID'].isin(patients['gf']))
+                                 & (~prev_txf_li['TRR_ID'].isin(patients['inf']))]['TRR_ID'].unique()
 
-    all_patients = np.concatenate((cardio_patients,
-        cancer_patients,
-        gf_patients,
-        inf_patients,
-        lived_patients))
+    all_patients = np.concatenate([patients[x] for x in patients])
 
     # Remove follow-ups past 5 years after transplant
     prev_txf_li['fol_yr'] = pd.to_numeric(prev_txf_li['TFL_PX_STAT_DT'].str[:4])
     prev_txf_li['last_fol_yr'] = prev_txf_li.groupby('TRR_ID')['fol_yr'].transform('last')
     prev_txf_li['out_yr'] = prev_txf_li.apply(lambda row:
-                                              row['last_fol_yr'] - 5 if row['TRR_ID'] in lived_patients else row[
+                                              row['last_fol_yr'] - 5 if row['TRR_ID'] in patients['lived'] else row[
                                                   'last_fol_yr'], axis=1)
     prev_txf_li.drop('last_fol_yr', axis=1, inplace=True)
     prev_txf_li = prev_txf_li[prev_txf_li.apply(lambda row:
@@ -142,7 +142,7 @@ if __name__ == '__main__':
 
     # remove patients with DOD but no COD
     dod_array = prev_txf_li[~prev_txf_li['PERS_OPTN_DEATH_DT'].isna()]['TRR_ID'].unique()
-    remove_array = np.intersect1d(dod_array, lived_patients)
+    remove_array = np.intersect1d(dod_array, patients['lived'])
     prev_txf_li = prev_txf_li[prev_txf_li.apply(lambda row:
             False if row['TRR_ID'] in remove_array else True, axis=1)]
 
@@ -167,11 +167,8 @@ if __name__ == '__main__':
     ids = txf_li['TRR_ID'].unique()
 
     print(f"Number of patients after multi-COD filtering: {txf_li['TRR_ID'].nunique()}")
-    print(f'Number of survived patients: {np.intersect1d(lived_patients, ids).shape[0]}')
-    print(f'Number of cancer patients: {np.intersect1d(cancer_patients, ids).shape[0]}')
-    print(f'Number of graft failure patients: {np.intersect1d(gf_patients, ids).shape[0]}')
-    print(f'Number of inf patients: {np.intersect1d(inf_patients, ids).shape[0]}')
-    print(f'Number of cardio patients: {np.intersect1d(cardio_patients, ids).shape[0]}')
+    for class_name in CLASSES:
+        print(f'Number of {class_name} patients: {np.intersect1d(patients[class_name], ids).shape[0]}')
 
     tx_len = tx_li.shape[0]
     txf_len = txf_li.shape[0]
@@ -430,7 +427,7 @@ if __name__ == '__main__':
 
     valid_ids = []
     for i in combined_data['TRR_ID'].unique():
-        if i not in lived_patients:
+        if i not in patients['lived']:
             valid_ids.append(i)
         elif combined_data[combined_data['TRR_ID'] == i].shape[0] > 1:
             valid_ids.append(i)
@@ -464,30 +461,17 @@ if __name__ == '__main__':
     combined_data = pd.concat([combined_data.reset_index(drop=True), label5.reset_index(drop=True)], axis=1)
 
     trr_ids = combined_data['TRR_ID'].unique()
-    lived_ids = list(np.intersect1d(lived_patients, trr_ids))
-    cardio_ids = list(np.intersect1d(cardio_patients, trr_ids))
-    gf_ids = list(np.intersect1d(gf_patients, trr_ids))
-    cancer_ids = list(np.intersect1d(cancer_patients, trr_ids))
-    inf_ids = list(np.intersect1d(inf_patients, trr_ids))
+    ids, split_data = {}, { 'train': {}, 'valid': {}, 'test': {} }
+    for class_name in CLASSES:
+        ids[class_name] = list(np.intersect1d(patients[class_name], trr_ids))
+        split_data['train'][class_name], other = train_test_split(ids[class_name], test_size=0.20, shuffle=True)
+        split_data['valid'][class_name], split_data['test'][class_name] = train_test_split(other, test_size=0.50, shuffle=True)
+        print(f'{class_name} train: {len(split_data["train"][class_name])}, '
+              f'{class_name} valid: {len(split_data["valid"][class_name])}, '
+              f'{class_name} test: {len(split_data["test"][class_name])}')
 
-    lived_train, lived_valid = train_test_split(lived_ids, test_size=0.20, shuffle=True)
-    print(f'lived train: {len(lived_train)}, lived valid: {len(lived_valid)}')
-
-    cardio_train, cardio_valid = train_test_split(cardio_ids, test_size=0.20, shuffle=True)
-    print(f'cardio train: {len(cardio_train)}, cardio valid: {len(cardio_valid)}')
-
-    gf_train, gf_valid = train_test_split(gf_ids, test_size=0.20, shuffle=True)
-    print(f'graft failure train: {len(gf_train)}, graft failure valid: {len(gf_valid)}')
-
-    cancer_train, cancer_valid = train_test_split(cancer_ids, test_size=0.20, shuffle=True)
-    print(f'cancer train: {len(cancer_train)}, cancer valid: {len(cancer_valid)}')
-
-    inf_train, inf_valid = train_test_split(inf_ids, test_size=0.20, shuffle=True)
-    print(f'inf train: {len(inf_train)}, inf valid: {len(inf_valid)}')
-
-    all_train = lived_train + cardio_train + gf_train + cancer_train + inf_train
-    all_valid = lived_valid + cardio_valid + gf_valid + cancer_valid + inf_valid
-    print(f'all train: {len(all_train)}, all valid: {len(all_valid)}')
+    for name, group in split_data.items():
+        print(f'all {name}: {len([x for y in group.values() for x in y])}')
 
     all_data = combined_data.copy()
 
@@ -502,64 +486,48 @@ if __name__ == '__main__':
     dummy_cols = [f'dummy_{x}' for x in range(13)]
     combined_data = combined_data.reindex(combined_data.columns.tolist() + dummy_cols, axis=1)
 
-    combined_data['lived_5_yr'] = all_data.apply(lambda x: 0 if x['label1'] or x['label5'] else 1, axis=1)
-    combined_data['cardio_5_yr'] = all_data.apply(lambda x: 1 if x['label5'] and x['TRR_ID'] in cardio_ids else 0, axis=1)
-    combined_data['gf_5_yr'] = all_data.apply(lambda x: 1 if x['label5'] and x['TRR_ID'] in gf_ids else 0, axis=1)
-    combined_data['cancer_5_yr'] = all_data.apply(lambda x: 1 if x['label5'] and x['TRR_ID'] in cancer_ids else 0, axis=1)
-    combined_data['inf_5_yr'] = all_data.apply(lambda x: 1 if x['label5'] and x['TRR_ID'] in inf_ids else 0, axis=1)
+    # 5 year labels
+    for class_name in CLASSES:
+        if class_name == 'lived':
+            combined_data[f'{class_name}_5_yr'] = all_data.apply(lambda x: 0 if x['label1'] or x['label5'] else 1, axis=1)
+        else:
+            combined_data[f'{class_name}_5_yr'] = all_data.apply(lambda x: 1 if x['label5'] and x['TRR_ID'] in ids[class_name] else 0, axis=1)
+        # combined_data[f'{class_name}_5_yr'] = combined_data.groupby('TRR_ID')[f'{class_name}_5_yr'].transform( 'first')
 
-    combined_data['lived_1_yr'] = all_data.apply(lambda x: 0 if x['label1'] else 1, axis=1)
-    combined_data['cardio_1_yr'] = all_data.apply(lambda x: 1 if x['label1'] and x['TRR_ID'] in cardio_ids else 0, axis=1)
-    combined_data['gf_1_yr'] = all_data.apply(lambda x: 1 if x['label1'] and x['TRR_ID'] in gf_ids else 0, axis=1)
-    combined_data['cancer_1_yr'] = all_data.apply(lambda x: 1 if x['label1'] and x['TRR_ID'] in cancer_ids else 0, axis=1)
-    combined_data['inf_1_yr'] = all_data.apply(lambda x: 1 if x['label1'] and x['TRR_ID'] in inf_ids else 0, axis=1)
-
-    combined_data['lived_5_yr'] = combined_data.groupby('TRR_ID')['lived_5_yr'].transform('first')
-    combined_data['cardio_5_yr'] = combined_data.groupby('TRR_ID')['cardio_5_yr'].transform('first')
-    combined_data['gf_5_yr'] = combined_data.groupby('TRR_ID')['gf_5_yr'].transform('first')
-    combined_data['cancer_5_yr'] = combined_data.groupby('TRR_ID')['cancer_5_yr'].transform('first')
-    combined_data['inf_5_yr'] = combined_data.groupby('TRR_ID')['inf_5_yr'].transform('first')
-
-    combined_data['lived_1_yr'] = combined_data.groupby('TRR_ID')['lived_1_yr'].transform('first')
-    combined_data['cardio_1_yr'] = combined_data.groupby('TRR_ID')['cardio_1_yr'].transform('first')
-    combined_data['gf_1_yr'] = combined_data.groupby('TRR_ID')['gf_1_yr'].transform('first')
-    combined_data['cancer_1_yr'] = combined_data.groupby('TRR_ID')['cancer_1_yr'].transform('first')
-    combined_data['inf_1_yr'] = combined_data.groupby('TRR_ID')['inf_1_yr'].transform('first')
+    # 1 year labels
+    for class_name in CLASSES:
+        if class_name == 'lived':
+            combined_data[f'{class_name}_1_yr'] = all_data.apply(lambda x: 0 if x['label1'] else 1, axis=1)
+        else:
+            combined_data[f'{class_name}_1_yr'] = all_data.apply(lambda x: 1 if x['label1'] and x['TRR_ID'] in ids[class_name] else 0, axis=1)
+        # combined_data[f'{class_name}_1_yr'] = combined_data.groupby('TRR_ID')[f'{class_name}_1_yr'].transform( 'first')
 
     combined_data['dummy'] = 0
     combined_data['time_to_death'] = all_data['time_to_death'].copy()
     combined_data['year_of_transplant'] = year_of_transplant
 
-    print(combined_data)
+    groups = combined_data.groupby('TRR_ID')
+    groups.ffill()
 
     combined_data.fillna(-1, inplace=True)
 
+    print(combined_data)
+
     combined_data.to_csv('./combined_data.csv', index=False)
 
-    groups = combined_data.groupby('TRR_ID')
-    exit()
+    for name, set in split_data.items():
+        for class_name in CLASSES:
+            index = 0
+            dir_path = f'./processed_data/{name}_tensors/{class_name}'
+            Path(dir_path).mkdir(parents=True, exist_ok=True)
+            for i in set[class_name]:
+                df = groups.get_group(i)
+                df = df.drop('TRR_ID', axis=1)
+                save_path = f'{dir_path}/{str(index)}.pt'
+                tensor = torch.tensor(df.values)
+                torch.save(tensor, save_path)
+                index += 1
 
-    index = 0
-    for i in all_train:
-        df = groups.get_group(i)
-        df.drop('TRR_ID', axis=1, inplace=True)
-        # path = "./processed_data/train_tensors/" + str(index) + ".csv"
-        path = "./processed_data/train_tensors/" + str(index) + ".pt"
-        tensor = torch.tensor(df.values)
-        torch.save(tensor, path)
-        # df.to_csv(path, index=False)
-        index += 1
-
-    index = 0
-    for i in all_valid:
-        df = groups.get_group(i)
-        df.drop('TRR_ID', axis=1, inplace=True)
-        # path = "./processed_data/valid_tensors/" + str(index) + ".csv"
-        path = "./processed_data/valid_tensors/" + str(index) + ".pt"
-        tensor = torch.tensor(df.values)
-        torch.save(tensor, path)
-        # df.to_csv(path, index=False)
-        index += 1
 
     print('complete')
 
