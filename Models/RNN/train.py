@@ -106,7 +106,10 @@ def train(weights):
             prob = outputs.data[i][:int(seq_len[i])].cpu().numpy()
 
             prediction = np.zeros(targets.shape)
-            prediction[np.arange(prediction.shape[0]), np.argmax(prob, axis=1)] = 1
+            # prediction[np.arange(prediction.shape[0]), np.argmax(prob, axis=1)] = 1
+            prediction[np.arange(prediction.shape[0]), np.argmax(prob[:, :5], axis=1)] = 1
+            prediction[np.arange(prediction.shape[0]), np.argmax(prob[:, 5:], axis=1) + 5] = 1
+            # prediction = prob > 0.5
             match = (targets == prediction)
             
             pos += np.sum(prediction,axis=0).astype(int)
@@ -156,7 +159,10 @@ def valid(weights):
                 prob = outputs.data[i][:int(seq_len[i])].cpu().numpy()
 
                 prediction = np.zeros(targets.shape)
-                prediction[np.arange(prediction.shape[0]), np.argmax(prob, axis=1)] = 1
+                # prediction[np.arange(prediction.shape[0]), np.argmax(prob, axis=1)] = 1
+                prediction[np.arange(prediction.shape[0]), np.argmax(prob[:, :5], axis=1)] = 1
+                prediction[np.arange(prediction.shape[0]), np.argmax(prob[:, 5:], axis=1) + 5] = 1
+                # prediction = prob > 0.5
                 match = (targets == prediction)
                 
                 pos += np.sum(prediction,axis=0).astype(int)

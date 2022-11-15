@@ -11,14 +11,14 @@ class RT(nn.Module):
         self.encoder = nn.Linear(input_size, d_model)
         self.rt = RTransformer(d_model, rnn_type, ksize, n_level, n, h, dropout, device)
         self.linear = nn.Linear(d_model, output_size)
-        self.sig = nn.Sigmoid()
+        self.soft = nn.Softmax(dim=2)
         self.device = device
 
     def forward(self, x):
         x = self.encoder(x)
         output = self.rt(x)
         output = self.linear(output).double()
-        return self.sig(output).squeeze()
+        return output.squeeze()
 
 '''
 input_size      number of clinical variables

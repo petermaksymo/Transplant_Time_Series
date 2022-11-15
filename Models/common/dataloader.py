@@ -117,7 +117,7 @@ def make_train_loader(train_path, train_data, batch_size, shuffle, collate_fn, s
     #                       generator=torch.Generator(device='cuda'))
 
 
-def get_train_weights(train_path, train_data, precomputed=True):
+def get_train_weights(train_path, train_data, year, precomputed=True):
     if precomputed:
         neg_weights = torch.tensor([0.8739, 0.1465, 0.1311, 0.1773, 0.1617, 6.048,
                                     0.0291, 0.0366, 0.0428, 0.0386])
@@ -149,10 +149,13 @@ def get_train_weights(train_path, train_data, precomputed=True):
     multiplier = (1 / np.mean(weights * multiplier)) * multiplier
     # print('t_neg_weights', neg_weights)
     # print('t_class_weights', multiplier)
-    return torch.from_numpy(neg_weights), torch.from_numpy(multiplier)
+    if year == 1:
+        return torch.from_numpy(neg_weights[-5:]), torch.from_numpy(multiplier[-5:])
+    else:
+        return torch.from_numpy(neg_weights[:5]), torch.from_numpy(multiplier[:5])
 
 
-def get_valid_weights(valid_indices, valid_data, precomputed=True):
+def get_valid_weights(valid_indices, valid_data, year, precomputed=True):
     if precomputed:
         neg_weights = torch.tensor([7.519, 1.574e-02, 1.863e-02, 4.513e-02,
                                     4.209e-02, 3.0501e+01, 3.811e-03, 5.994e-03, 1.184e-02, 1.038e-02])
@@ -183,4 +186,7 @@ def get_valid_weights(valid_indices, valid_data, precomputed=True):
     multiplier = (1 / np.mean(weights * multiplier)) * multiplier
     # print('v_neg_weights', neg_weights)
     # print('v_class_weights', multiplier)
-    return torch.from_numpy(neg_weights), torch.from_numpy(multiplier)
+    if year == 1:
+        return torch.from_numpy(neg_weights[-5:]), torch.from_numpy(multiplier[-5:])
+    else:
+        return torch.from_numpy(neg_weights[:5]), torch.from_numpy(multiplier[:5])

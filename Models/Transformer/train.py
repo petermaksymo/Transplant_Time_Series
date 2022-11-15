@@ -40,6 +40,8 @@ parser.add_argument('--search', action='store_true',
                     help='search output formatting')
 parser.add_argument('--cv', action='store', default=1, type=int,
                     help='Cross-Val fold')
+parser.add_argument('--year', action='store', default=1, type=int,
+                    help='year for prediction')
 
 ######## __RTransformer__ ########
 parser.add_argument('--dim', action='store', default=32, type=int,
@@ -81,26 +83,30 @@ else:
 def train(weights):
 
     running_loss  = 0
-    correct = np.zeros((10))
-    pos = np.zeros((10))
+    correct = np.zeros((5))
+    pos = np.zeros((5))
     total = 0
-    predictions = [np.array([])] * 10 
-    actual = [np.array([])] * 10
+    predictions = [np.array([])] * 5
+    actual = [np.array([])] * 5
     t_neg_weights, t_class_weights = weights
     t_neg_weights, t_class_weights = t_neg_weights.to(args.device), t_class_weights.to(args.device)
 
     for batch, labels, seq_len in train_loader:
         # pass to GPU if available
+        labels = labels[:, :, -5:] if args.year == 1 else labels[:, :, 5]
         batch, labels = batch.to(args.device), labels.to(args.device)
 
         # run network
         optimizer.zero_grad()
         outputs = model(batch)
 
-        multiplier = ( ((labels==0).double() * t_neg_weights) + (labels==1).double() ) * t_class_weights
-        mask = (multiplier > 0) * (labels <= 1) * (labels >= 0)
+        # multiplier = ( ((labels==0).double() * t_neg_weights) + (labels==1).double() ) * t_class_weights
+        # mask = (multiplier > 0) * (labels <= 1) * (labels >= 0)
 
-        loss = torch.mean( criterion(outputs.masked_select(mask), labels.masked_select(mask)) * multiplier.masked_select(mask) )
+        # loss = torch.mean( criterion(outputs.masked_select(mask), labels.masked_select(mask)) * multiplier.masked_select(mask) )
+
+        labels_1 = torch.where(labels[:,:,0] == -1, -1, labels.argmax(dim=2))
+        loss = criterion(outputs.permute(0, 2, 1), labels_1)
 
         # adjust weights and record loss
         loss.backward()
@@ -113,23 +119,20 @@ def train(weights):
             prob = outputs.data[i][:int(seq_len[i])].cpu().numpy()
 
             prediction = np.zeros(targets.shape)
-            prediction[np.arange(prediction.shape[0]), np.argmax(prob[:, :5], axis=1)] = 1
-            prediction[np.arange(prediction.shape[0]), np.argmax(prob[:, 5:], axis=1)+5] = 1
-            # prediction = prob > 0.5
+            prediction[np.arange(prediction.shape[0]), np.argmax(prob, axis=1)] = 1
             match = (targets == prediction)
 
-
-            # print('prob', prob)
-            # print('targets', targets)
-            # print('prediction', prediction)
-            # print('match', match)
+            # print(targets)
+            # print(prob)
+            # print(match)
+            # exit()
 
             pos += np.sum(prediction,axis=0).astype(int)
             correct += np.sum(match,axis=0).astype(int)
             total += targets.shape[0]
 
             # for AUC
-            for j in range(10):
+            for j in range(5):
                 actual[j] = np.concatenate((actual[j], labels[i][:int(seq_len[i]),j].view(-1).cpu().numpy()))
                 predictions[j] = np.concatenate((predictions[j], outputs[i][:int(seq_len[i]),j].detach().view(-1).cpu().numpy()))
 
@@ -141,16 +144,17 @@ def train(weights):
 def valid(weights):
     
     running_loss  = 0
-    correct = np.zeros(10)
-    pos = np.zeros(10)
+    correct = np.zeros(5)
+    pos = np.zeros(5)
     total = 0
-    predictions = [np.array([])] * 10
-    actual = [np.array([])] * 10
+    predictions = [np.array([])] * 5
+    actual = [np.array([])] * 5
     v_neg_weights, v_class_weights = weights
     v_neg_weights, v_class_weights = v_neg_weights.to(args.device), v_class_weights.to(args.device)
 
     with torch.no_grad():
         for batch, labels, seq_len in val_loader:
+            labels = labels[:, :, -5:] if args.year == 1 else labels[:, :, 5]
             # pass to GPU if available
             batch, labels = batch.to(args.device), labels.to(args.device)
 
@@ -158,11 +162,13 @@ def valid(weights):
             optimizer.zero_grad()
             outputs = model(batch)
 
-            multiplier = ( ((labels==0).double() * v_neg_weights) + (labels==1).double() ) * v_class_weights
-            mask = (multiplier > 0) * (labels <= 1) * (labels >= 0)
+            # multiplier = ( ((labels==0).double() * v_neg_weights) + (labels==1).double() ) * v_class_weights
+            # mask = (multiplier > 0) * (labels <= 1) * (labels >= 0)
+            #
+            # loss = torch.mean( criterion(outputs.masked_select(mask), labels.masked_select(mask)) * multiplier.masked_select(mask) )
 
-            loss = torch.mean( criterion(outputs.masked_select(mask), labels.masked_select(mask)) * multiplier.masked_select(mask) )
-
+            labels_1 = torch.where(labels[:, :, 0] == -1, -1, labels.argmax(dim=2))
+            loss = criterion(outputs.permute(0, 2, 1), labels_1)
             running_loss += loss.cpu().data.numpy()
             
             # Validation accuracy
@@ -171,10 +177,7 @@ def valid(weights):
                 prob = outputs.data[i][:int(seq_len[i])].cpu().numpy()
 
                 prediction = np.zeros(targets.shape)
-                # prediction[np.arange(prediction.shape[0]), np.argmax(prob, axis=1)] = 1
-                prediction[np.arange(prediction.shape[0]), np.argmax(prob[:, :5], axis=1)] = 1
-                prediction[np.arange(prediction.shape[0]), np.argmax(prob[:, 5:], axis=1) + 5] = 1
-                # prediction = prob > 0.5
+                prediction[np.arange(prediction.shape[0]), np.argmax(prob, axis=1)] = 1
                 match = (targets == prediction)
                 
                 pos += np.sum(prediction,axis=0).astype(int)
@@ -182,12 +185,12 @@ def valid(weights):
                 total += targets.shape[0]
 
                 # for AUC
-                for j in range(10):
+                for j in range(5):
                     actual[j] = np.concatenate((actual[j], labels[i][:int(seq_len[i]),j].view(-1).cpu().numpy()))
                     predictions[j] = np.concatenate((predictions[j], outputs[i][:int(seq_len[i]),j].view(-1).cpu().numpy()))
 
-
-        val_losses[epoch] = running_loss/len(val_loader)
+        # val_losses[epoch] = running_loss/len(val_loader)
+        val_losses[epoch] = running_loss
         val_acc[epoch] = correct/total
         val_freq[epoch] = pos / sum(pos)
         val_auc[epoch] = get_aucs(actual, predictions)
@@ -223,13 +226,13 @@ if __name__ == '__main__':
 
     ''' training data setup '''
     valid_indices = list(range(len(val_data)))
-    v_weights = get_valid_weights(valid_indices, val_data, False)
-    t_weights = get_train_weights(train_path, train_data, False)
+    v_weights = get_valid_weights(valid_indices, val_data, args.year, False)
+    t_weights = get_train_weights(train_path, train_data, args.year, False)
 
     '''Transformer'''
-    model = RT(input_size=190, d_model=args.dim, output_size=10, h=args.heads, rnn_type='RNN',
+    model = RT(input_size=190, d_model=args.dim, output_size=5, h=args.heads, rnn_type='RNN',
                 ksize=args.ksize, n=args.rnn, n_level=args.levels, dropout=args.drop, device=args.device).to(args.device)
-    criterion = nn.BCELoss(reduction='none')
+    criterion = nn.CrossEntropyLoss(ignore_index=-1)
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr, betas=(args.b1, args.b2), weight_decay=args.l2)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=10, factor=0.1, verbose=False)
@@ -239,14 +242,14 @@ if __name__ == '__main__':
     train_losses = np.zeros(args.epochs)
     val_losses = np.zeros(args.epochs)
     # accuracies tracker
-    train_acc = np.zeros((args.epochs, 10))
-    val_acc = np.zeros((args.epochs, 10))
+    train_acc = np.zeros((args.epochs, 5))
+    val_acc = np.zeros((args.epochs, 5))
     # frequency tracker
-    train_freq = np.zeros((args.epochs, 10))
-    val_freq = np.zeros((args.epochs, 10))
+    train_freq = np.zeros((args.epochs, 5))
+    val_freq = np.zeros((args.epochs, 5))
     # AUC traker
-    train_auc = np.zeros((args.epochs, 10))
-    val_auc = np.zeros((args.epochs, 10))
+    train_auc = np.zeros((args.epochs, 5))
+    val_auc = np.zeros((args.epochs, 5))
 
     # val data same every epoch
     val_dataset = Dataset(valid_indices, val_data)
@@ -271,7 +274,7 @@ if __name__ == '__main__':
         best_auc = np.mean(val_auc[epoch]) == max(np.mean(val_auc[:epoch+1],axis=1))
 
         if save:
-            save_prog(model, save_path, train_losses, val_losses, epoch, best_loss, best_t_loss, best_auc)
+            save_prog(model, save_path, train_losses, val_losses, epoch, best_loss, best_t_loss, best_auc, val_loader, args.device)
 
     # PLOT GRAPHS
     if save:
