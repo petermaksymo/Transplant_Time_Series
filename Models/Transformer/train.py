@@ -11,7 +11,8 @@ from torch.utils.data import DataLoader
 import sys
 sys.path.append("..")
 from common.util import auc_plotter, show_prog, save_prog, get_aucs
-from common.dataloader import Dataset, collate_fn, make_train_loader, get_train_weights, get_valid_weights
+from common.dataloader import Dataset, collate_fn, make_train_loader, get_train_weights, get_valid_weights, get_loss_weights
+from common.confusion_matrix import generate_curves
 from model import RT
 
 
@@ -100,13 +101,11 @@ def train(weights):
         optimizer.zero_grad()
         outputs = model(batch)
 
-        # multiplier = ( ((labels==0).double() * t_neg_weights) + (labels==1).double() ) * t_class_weights
-        # mask = (multiplier > 0) * (labels <= 1) * (labels >= 0)
-
-        # loss = torch.mean( criterion(outputs.masked_select(mask), labels.masked_select(mask)) * multiplier.masked_select(mask) )
-
-        labels_1 = torch.where(labels[:,:,0] == -1, -1, labels.argmax(dim=2))
-        loss = criterion(outputs.permute(0, 2, 1), labels_1)
+        # Compute loss for ALL masked inputs
+        # labels_1 = torch.where(labels[:,:,0] == -1, -1, labels.argmax(dim=2))
+        # loss = criterion(outputs.permute(0, 2, 1), labels_1)
+        indeces = (seq_len.long() - 1).to(args.device)
+        loss = criterion(outputs[range(seq_len.shape[0]), indeces, :], labels[range(seq_len.shape[0]), indeces, :])
 
         # adjust weights and record loss
         loss.backward()
@@ -115,8 +114,8 @@ def train(weights):
 
         # train accuracy
         for i in range(labels.shape[0]):
-            targets = labels.data[i][:int(seq_len[i])].cpu().numpy()
-            prob = outputs.data[i][:int(seq_len[i])].cpu().numpy()
+            targets = labels.data[i][int(seq_len[i])-1].unsqueeze(dim=0).cpu().numpy()
+            prob = outputs.data[i][int(seq_len[i])-1].unsqueeze(dim=0).cpu().numpy()
 
             prediction = np.zeros(targets.shape)
             prediction[np.arange(prediction.shape[0]), np.argmax(prob, axis=1)] = 1
@@ -133,8 +132,8 @@ def train(weights):
 
             # for AUC
             for j in range(5):
-                actual[j] = np.concatenate((actual[j], labels[i][:int(seq_len[i]),j].view(-1).cpu().numpy()))
-                predictions[j] = np.concatenate((predictions[j], outputs[i][:int(seq_len[i]),j].detach().view(-1).cpu().numpy()))
+                actual[j] = np.concatenate((actual[j], labels[i][int(seq_len[i])-1,j].view(-1).cpu().numpy()))
+                predictions[j] = np.concatenate((predictions[j], outputs[i][int(seq_len[i])-1,j].detach().view(-1).cpu().numpy()))
 
     train_losses[epoch] = running_loss/len(train_loader)
     train_acc[epoch] = correct/total
@@ -143,7 +142,7 @@ def train(weights):
     
 def valid(weights):
     
-    running_loss  = 0
+    running_loss = 0
     correct = np.zeros(5)
     pos = np.zeros(5)
     total = 0
@@ -162,19 +161,18 @@ def valid(weights):
             optimizer.zero_grad()
             outputs = model(batch)
 
-            # multiplier = ( ((labels==0).double() * v_neg_weights) + (labels==1).double() ) * v_class_weights
-            # mask = (multiplier > 0) * (labels <= 1) * (labels >= 0)
-            #
-            # loss = torch.mean( criterion(outputs.masked_select(mask), labels.masked_select(mask)) * multiplier.masked_select(mask) )
+            # Compute loss for ALL masked inputs
+            # labels_1 = torch.where(labels[:,:,0] == -1, -1, labels.argmax(dim=2))
+            # loss = criterion(outputs.permute(0, 2, 1), labels_1)
+            indeces = (seq_len.long() - 1).to(args.device)
+            loss = criterion(outputs[range(seq_len.shape[0]), indeces, :], labels[range(seq_len.shape[0]), indeces, :])
 
-            labels_1 = torch.where(labels[:, :, 0] == -1, -1, labels.argmax(dim=2))
-            loss = criterion(outputs.permute(0, 2, 1), labels_1)
             running_loss += loss.cpu().data.numpy()
             
             # Validation accuracy
             for i in range(labels.shape[0]):
-                targets = labels.data[i][:int(seq_len[i])].cpu().numpy()
-                prob = outputs.data[i][:int(seq_len[i])].cpu().numpy()
+                targets = labels.data[i][int(seq_len[i]) - 1].unsqueeze(dim=0).cpu().numpy()
+                prob = outputs.data[i][int(seq_len[i]) - 1].unsqueeze(dim=0).cpu().numpy()
 
                 prediction = np.zeros(targets.shape)
                 prediction[np.arange(prediction.shape[0]), np.argmax(prob, axis=1)] = 1
@@ -186,9 +184,10 @@ def valid(weights):
 
                 # for AUC
                 for j in range(5):
-                    actual[j] = np.concatenate((actual[j], labels[i][:int(seq_len[i]),j].view(-1).cpu().numpy()))
-                    predictions[j] = np.concatenate((predictions[j], outputs[i][:int(seq_len[i]),j].view(-1).cpu().numpy()))
+                    actual[j] = np.concatenate((actual[j], labels[i][int(seq_len[i])-1,j].view(-1).cpu().numpy()))
+                    predictions[j] = np.concatenate((predictions[j], outputs[i][int(seq_len[i])-1,j].view(-1).cpu().numpy()))
 
+        print(pos)
         # val_losses[epoch] = running_loss/len(val_loader)
         val_losses[epoch] = running_loss
         val_acc[epoch] = correct/total
@@ -228,10 +227,13 @@ if __name__ == '__main__':
     valid_indices = list(range(len(val_data)))
     v_weights = get_valid_weights(valid_indices, val_data, args.year, False)
     t_weights = get_train_weights(train_path, train_data, args.year, False)
+    loss_weights = get_loss_weights(train_data, args.year).to(args.device)
+    print(loss_weights)
 
     '''Transformer'''
-    model = RT(input_size=190, d_model=args.dim, output_size=5, h=args.heads, rnn_type='RNN',
+    model = RT(input_size=177, d_model=args.dim, output_size=5, h=args.heads, rnn_type='RNN',
                 ksize=args.ksize, n=args.rnn, n_level=args.levels, dropout=args.drop, device=args.device).to(args.device)
+    # criterion = nn.CrossEntropyLoss(weight=loss_weights, ignore_index=-1)
     criterion = nn.CrossEntropyLoss(ignore_index=-1)
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr, betas=(args.b1, args.b2), weight_decay=args.l2)
@@ -275,6 +277,8 @@ if __name__ == '__main__':
 
         if save:
             save_prog(model, save_path, train_losses, val_losses, epoch, best_loss, best_t_loss, best_auc, val_loader, args.device)
+
+    generate_curves(model, val_loader, args.year, args.device)
 
     # PLOT GRAPHS
     if save:

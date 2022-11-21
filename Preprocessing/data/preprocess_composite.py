@@ -337,18 +337,18 @@ if __name__ == '__main__':
 
     tx_ignore_mean_fill = ['REC_DGN', 'REC_DGN2', 'PERS_OPTN_DEATH_DT', 'REC_FAIL_DT', 'TFL_COD']
 
-    num_rows = tx_study.shape[0]
-    tmp = tx_study
-    for col in tmp.columns:
-        if is_numeric_dtype(tmp[col]) and col not in tx_ignore_mean_fill:
-            tmp[col] = tmp[col].replace(-1, np.nan)
-
-    #    na_num = tmp[col].isna().sum()
-    #    percent = na_num/num_rows
-    #    percent = 100*percent
-    #    print(f'Percent Missing in {col}: {percent}')
-        if is_numeric_dtype(tmp[col]) and col not in tx_ignore_mean_fill:
-            tmp[col] = tmp[col].fillna(tmp[col].mean())
+    # num_rows = tx_study.shape[0]
+    # tmp = tx_study
+    # for col in tmp.columns:
+    #     if is_numeric_dtype(tmp[col]) and col not in tx_ignore_mean_fill:
+    #         tmp[col] = tmp[col].replace(-1, np.nan)
+    #
+    # #    na_num = tmp[col].isna().sum()
+    # #    percent = na_num/num_rows
+    # #    percent = 100*percent
+    # #    print(f'Percent Missing in {col}: {percent}')
+    #     if is_numeric_dtype(tmp[col]) and col not in tx_ignore_mean_fill:
+    #         tmp[col] = tmp[col].fillna(tmp[col].mean())
 
     def fol_cd(row):
         if row['TFL_FOL_CD'] == 6:

@@ -100,10 +100,13 @@ def save_prog(model, model_path, train_losses, val_losses, epoch, best_loss, bes
 
     #save model scripted model
     if best_loss:
+        print('saving best loss')
         model_scripted.save(f'{model_path}scripted_best_loss_model.pt')
     if best_t_loss:
+        print('saving best t loss')
         model_scripted.save(f'{model_path}scripted_best_train_loss_model.pt')
     if best_auc:
+        print('saving best auc')
         model_scripted.save(f'{model_path}scripted_best_auc_model.pt')
 
 def get_aucs(actual, predictions):

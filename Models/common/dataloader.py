@@ -6,6 +6,7 @@ import fnmatch
 import torch
 from torch.utils import data
 from torch.utils.data import DataLoader
+from sklearn.utils import class_weight
 
 CLASSES = ['lived', 'cardio', 'gf', 'cancer', 'inf']
 
@@ -32,7 +33,7 @@ class Dataset(data.Dataset):
         # y = x[:, -13:-8] # 5 year outlook
         # y = x[:, -8:-3] # 1 year outlook
         y = x[:, -13:-3]  # 5 year and 1 year outlook
-        x = x[:, :-13]
+        x = x[:, :177]
 
         ''' for future use '''
         if self.inc_year:
@@ -73,6 +74,7 @@ def make_train_loader(train_path, train_data, batch_size, shuffle, collate_fn, s
         train_indices.extend(random.sample(range(min_val, min_val + amt), min(class_totals)))
         min_val += amt
 
+    # train_indices = range(len(train_data))
     train_dataset = Dataset(train_indices, train_data)
     return DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn,
                       generator=torch.Generator(device='cuda'))
@@ -115,6 +117,14 @@ def make_train_loader(train_path, train_data, batch_size, shuffle, collate_fn, s
     #     train_data = Dataset(train_indices, train_path)
     #     return DataLoader(train_data, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn,
     #                       generator=torch.Generator(device='cuda'))
+
+
+def get_loss_weights(train_data, year):
+    all_data = torch.cat([torch.unsqueeze(x[-1, :], dim=0) for x in train_data], dim=0)
+    labels = all_data[:, -8:-3].argmax(dim=1) if year == 1 else all_data[:, -13:-8].argmax(dim=1)
+    labels = labels.numpy()
+    weights = class_weight.compute_class_weight('balanced', classes=range(5), y=labels)
+    return torch.from_numpy(weights)
 
 
 def get_train_weights(train_path, train_data, year, precomputed=True):
