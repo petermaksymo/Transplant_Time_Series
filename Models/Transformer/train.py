@@ -94,7 +94,7 @@ def train(weights):
 
     for batch, labels, seq_len in train_loader:
         # pass to GPU if available
-        labels = labels[:, :, -5:] if args.year == 1 else labels[:, :, 5]
+        labels = labels[:, :, -5:] if args.year == 1 else labels[:, :, :5]
         batch, labels = batch.to(args.device), labels.to(args.device)
 
         # run network
@@ -153,7 +153,7 @@ def valid(weights):
 
     with torch.no_grad():
         for batch, labels, seq_len in val_loader:
-            labels = labels[:, :, -5:] if args.year == 1 else labels[:, :, 5]
+            labels = labels[:, :, -5:] if args.year == 1 else labels[:, :, :5]
             # pass to GPU if available
             batch, labels = batch.to(args.device), labels.to(args.device)
 
@@ -231,7 +231,7 @@ if __name__ == '__main__':
     print(loss_weights)
 
     '''Transformer'''
-    model = RT(input_size=177, d_model=args.dim, output_size=5, h=args.heads, rnn_type='RNN',
+    model = RT(input_size=183, d_model=args.dim, output_size=5, h=args.heads, rnn_type='RNN',
                 ksize=args.ksize, n=args.rnn, n_level=args.levels, dropout=args.drop, device=args.device).to(args.device)
     # criterion = nn.CrossEntropyLoss(weight=loss_weights, ignore_index=-1)
     criterion = nn.CrossEntropyLoss(ignore_index=-1)

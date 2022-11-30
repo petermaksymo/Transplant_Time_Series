@@ -1,6 +1,7 @@
 # exec(open("preprocess_data.py").read())
 import pandas as pd
 from pandas.api.types import is_numeric_dtype
+import scipy.stats as stats
 import numpy as np
 import re
 import os
@@ -179,13 +180,9 @@ if __name__ == '__main__':
     tx_vars = ["TRR_ID", "REC_DGN", "REC_DGN2",
                 "CAN_AGE_AT_LISTING", "CAN_GENDER", "DON_GENDER",
                   "CAN_LAST_SERUM_SODIUM", "CAN_LAST_SERUM_CREAT", "CAN_LAST_SRTR_LAB_MELD",
-                  "CAN_PREV_HL", "CAN_PREV_HR", "CAN_PREV_IN", "CAN_PREV_KI",
-                  "CAN_PREV_LU", "CAN_PREV_PA", "CAN_PREV_TX",
                   "DON_AGE", "REC_AGE_AT_TX", "REC_POSTX_LOS",
-                  "REC_PREV_HL", "REC_PREV_HR", "REC_PREV_IN", "REC_PREV_KI",
-                  "REC_PREV_KP", "REC_PREV_LI",
-                  "REC_PREV_LU", "REC_PREV_PA", "PERS_OPTN_DEATH_DT",
-                  "REC_TX_DT", "REC_FAIL_DT", "TFL_COD"]
+                  "REC_PREV_HR", "REC_PREV_KI", "REC_PREV_LI", "PERS_OPTN_DEATH_DT",
+                  "REC_TX_DT", "TFL_COD"]
 
     txf_vars = ["fol_yr", "TRR_ID", "TRR_FOL_ID", "TFL_COD", "TFL_COD2", "TFL_COD3", "TFL_CREAT",
                  "TFL_INR", "TFL_REJ_EVENT_NUM", "TFL_SGOT", "TFL_SGPT", "TFL_TOT_BILI",
@@ -270,6 +267,11 @@ if __name__ == '__main__':
         tx_study = pd.concat([tx_study.reset_index(drop=True),
             tmp.reset_index(drop=True)], axis=1)
 
+    rec_fail_cols = tx_study.columns.str.contains('REC_FAIL_')
+    rec_fail = tx_study[tx_study.columns[rec_fail_cols]]
+    rec_fail = rec_fail.replace(to_replace=-1, value=np.nan)
+    tx_study['REC_FAIL_is_na'] = rec_fail.isna().max(axis=1).apply(lambda x: 0 if x==0 else 1)
+
     tmp = to_binary(tx_li, 'REC_HIV_STAT', ['P'], ['N'], ['U', 'I', 'C', 'ND'])
     tx_study = pd.concat([tx_study.reset_index(drop=True),
         tmp.reset_index(drop=True)], axis=1)
@@ -317,7 +319,15 @@ if __name__ == '__main__':
     del dummies2
     del dummies12
 
-    for col in ['CAN_RACE_SRTR', 'REC_FUNCTN_STAT', 'REC_PRIMARY_PAY']:
+    tmp = tx_li['REC_FUNCTN_STAT']
+    tmp.replace(to_replace=[996.0, 998.0], value=np.nan, inplace=True)
+    tmp.replace(to_replace=[2100.0, 2090.0, 2080.0, 2070.0, 1.0], value=0.0, inplace=True)
+    tmp.replace(to_replace=[2060.0, 2050.0, 2.0], value=1.0, inplace=True)
+    tmp.replace(to_replace=[2040.0, 2030.0, 3.0], value=2.0, inplace=True)
+    tmp.replace(to_replace=[2020.0, 2010.0], value=3.0, inplace=True)
+    tx_study = pd.concat([tx_study.reset_index(drop=True), tmp.reset_index(drop=True)], axis=1)
+
+    for col in ['CAN_RACE_SRTR', 'REC_PRIMARY_PAY']:
         dummy = pd.get_dummies(tx_li[col])
         headers = dummy.columns
         new_headers = []
@@ -335,7 +345,7 @@ if __name__ == '__main__':
     tmp = tmp.rename('CAN_ENTHNICITY_SRTR_LATINO')
     tx_study = pd.concat([tx_study.reset_index(drop=True), tmp.reset_index(drop=True)], axis=1)
 
-    tx_ignore_mean_fill = ['REC_DGN', 'REC_DGN2', 'PERS_OPTN_DEATH_DT', 'REC_FAIL_DT', 'TFL_COD']
+    tx_ignore_mean_fill = ['REC_DGN', 'REC_DGN2', 'PERS_OPTN_DEATH_DT', 'TFL_COD']
 
     # num_rows = tx_study.shape[0]
     # tmp = tx_study
@@ -382,9 +392,14 @@ if __name__ == '__main__':
 
     for c in ["TFL_FAIL_BILIARY", "TFL_GRAFT_STAT", "TFL_HOSP", "TFL_IMMUNO_DISCONT",
                   "TFL_MALIG", "TFL_MALIG_LYMPH","TFL_MALIG_RECUR_TUMOR", "TFL_MALIG_TUMOR",
-                  "TFL_PX_NONCOMP", "TFL_REJ_TREAT",  "TFL_CAD"]:
+                  "TFL_PX_NONCOMP", "TFL_REJ_TREAT"]:
         tmp = to_binary(txf_li, c, ['Y'], ['N'], ['U'])
         txf_study = pd.concat([txf_study.reset_index(drop=True), tmp.reset_index(drop=True)], axis=1)
+
+    tfl_malig_cols = txf_study.columns.str.contains('TFL_MALIG')
+    tfl_malig = txf_study[txf_study.columns[tfl_malig_cols]]
+    tfl_malig = tfl_malig.replace(to_replace=-1, value=np.nan)
+    txf_study['TFL_MALIG_is_na'] = tfl_malig.isna().max(axis=1).apply(lambda x: 0 if x == 0 else 1)
 
 
     def series_to_binary(series, pos, neg, na):
@@ -397,7 +412,6 @@ if __name__ == '__main__':
             d[i] = -1
         tmp = series
         tmp = tmp.replace(d)
-        tmp = tmp.fillna(-1)
         return tmp
 
     cols = ['TFL_CREAT', 'TFL_REJ_EVENT_NUM','TFL_SGOT','TFL_SGPT','TFL_TOT_BILI','TFL_DIAB_DURING_FOL']
@@ -475,7 +489,7 @@ if __name__ == '__main__':
 
     all_data = combined_data.copy()
 
-    drop = ['REC_DGN', 'REC_DGN2', 'PERS_OPTN_DEATH_DT', 'REC_TX_DT', 'REC_FAIL_DT', 'TFL_COD',
+    drop = ['REC_DGN', 'REC_DGN2', 'PERS_OPTN_DEATH_DT', 'REC_TX_DT', 'TFL_COD',
             'fol_yr', 'TRR_FOL_ID', 'TFL_COD2', 'TFL_COD3', 'TFL_PX_STAT_DT',
             'TFL_FAIL_DT', 'TFL_TXFER_DT', 'time_to_death', 'label1', 'label5',
             'REC_LIFE_SUPPORT']
@@ -483,7 +497,28 @@ if __name__ == '__main__':
     for col in drop:
         combined_data.drop(col, axis=1, inplace=True)
 
-    dummy_cols = [f'dummy_{x}' for x in range(13)]
+    # Forward fill null values
+    combined_data = combined_data.replace(to_replace=-1, value=np.nan)
+    groups = combined_data.groupby('TRR_ID')
+    groups.ffill()
+
+    # add ..._is_na cols
+    null_cols = combined_data.columns[combined_data.isna().any()].tolist()
+    null_cols = list(filter(lambda col: 'TFL_MALIG_' not in col and 'REC_FAIL_' not in col, null_cols))
+    for col in null_cols:
+        combined_data[f"{col}_is_na"] = combined_data[col].isna().astype(int)
+
+    # normalize cols and set na to min-1
+    numeric_cols = combined_data.select_dtypes(include=[np.number]).columns.tolist()
+    norm_cols = list(filter(lambda col: col != 'TRR_ID', numeric_cols))
+    for col in norm_cols:
+        combined_data[col] = combined_data[col].replace(to_replace=-1, value=np.nan)
+        combined_data[col] = stats.zscore(combined_data[col], nan_policy='omit')
+        combined_data[col] = combined_data[col].fillna(combined_data[col].min()-1.0)
+
+    combined_data.fillna(0, inplace=True)
+
+    dummy_cols = [f'dummy_{x}' for x in range(201 - len(combined_data.columns))]
     combined_data = combined_data.reindex(combined_data.columns.tolist() + dummy_cols, axis=1)
 
     # 5 year labels
@@ -507,9 +542,6 @@ if __name__ == '__main__':
     combined_data['year_of_transplant'] = year_of_transplant
 
     groups = combined_data.groupby('TRR_ID')
-    groups.ffill()
-
-    combined_data.fillna(-1, inplace=True)
 
     print(combined_data)
 
