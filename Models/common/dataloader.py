@@ -74,7 +74,7 @@ def make_train_loader(train_path, train_data, batch_size, shuffle, collate_fn, s
         train_indices.extend(random.sample(range(min_val, min_val + amt), min(class_totals)))
         min_val += amt
 
-    # train_indices = range(len(train_data))
+    train_indices = range(len(train_data))
     train_dataset = Dataset(train_indices, train_data)
     return DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn,
                       generator=torch.Generator(device='cuda'))

@@ -101,8 +101,8 @@ def generate_curves(model, val_loader, year, device):
 
             # Validation accuracy
             for i in range(labels.shape[0]):
-                targets = labels.data[i][int(seq_len[i]) - 1].unsqueeze(dim=0).cpu().numpy()
-                prob = outputs.data[i][int(seq_len[i]) - 1].unsqueeze(dim=0).cpu().numpy()
+                targets = labels.data[i][:int(seq_len[i])].cpu().numpy()
+                prob = outputs.data[i][:int(seq_len[i])].cpu().numpy()
 
                 prediction = np.zeros(targets.shape)
                 prediction[np.arange(prediction.shape[0]), np.argmax(prob, axis=1)] = 1

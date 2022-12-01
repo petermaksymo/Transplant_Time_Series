@@ -102,10 +102,8 @@ def train(weights):
         outputs = model(batch)
 
         # Compute loss for ALL masked inputs
-        # labels_1 = torch.where(labels[:,:,0] == -1, -1, labels.argmax(dim=2))
-        # loss = criterion(outputs.permute(0, 2, 1), labels_1)
-        indeces = (seq_len.long() - 1).to(args.device)
-        loss = criterion(outputs[range(seq_len.shape[0]), indeces, :], labels[range(seq_len.shape[0]), indeces, :])
+        labels_1 = torch.where(labels[:,:,0] == -1, -1, labels.argmax(dim=2))
+        loss = criterion(outputs.permute(0, 2, 1), labels_1)
 
         # adjust weights and record loss
         loss.backward()
@@ -114,8 +112,8 @@ def train(weights):
 
         # train accuracy
         for i in range(labels.shape[0]):
-            targets = labels.data[i][int(seq_len[i])-1].unsqueeze(dim=0).cpu().numpy()
-            prob = outputs.data[i][int(seq_len[i])-1].unsqueeze(dim=0).cpu().numpy()
+            targets = labels.data[i][:int(seq_len[i])].cpu().numpy()
+            prob = outputs.data[i][:int(seq_len[i])].cpu().numpy()
 
             prediction = np.zeros(targets.shape)
             prediction[np.arange(prediction.shape[0]), np.argmax(prob, axis=1)] = 1
@@ -132,8 +130,8 @@ def train(weights):
 
             # for AUC
             for j in range(5):
-                actual[j] = np.concatenate((actual[j], labels[i][int(seq_len[i])-1,j].view(-1).cpu().numpy()))
-                predictions[j] = np.concatenate((predictions[j], outputs[i][int(seq_len[i])-1,j].detach().view(-1).cpu().numpy()))
+                actual[j] = np.concatenate((actual[j], labels[i][:int(seq_len[i]),j].view(-1).cpu().numpy()))
+                predictions[j] = np.concatenate((predictions[j], outputs[i][:int(seq_len[i]),j].detach().view(-1).cpu().numpy()))
 
     train_losses[epoch] = running_loss/len(train_loader)
     train_acc[epoch] = correct/total
@@ -162,17 +160,15 @@ def valid(weights):
             outputs = model(batch)
 
             # Compute loss for ALL masked inputs
-            # labels_1 = torch.where(labels[:,:,0] == -1, -1, labels.argmax(dim=2))
-            # loss = criterion(outputs.permute(0, 2, 1), labels_1)
-            indeces = (seq_len.long() - 1).to(args.device)
-            loss = criterion(outputs[range(seq_len.shape[0]), indeces, :], labels[range(seq_len.shape[0]), indeces, :])
+            labels_1 = torch.where(labels[:,:,0] == -1, -1, labels.argmax(dim=2))
+            loss = criterion(outputs.permute(0, 2, 1), labels_1)
 
             running_loss += loss.cpu().data.numpy()
             
             # Validation accuracy
             for i in range(labels.shape[0]):
-                targets = labels.data[i][int(seq_len[i]) - 1].unsqueeze(dim=0).cpu().numpy()
-                prob = outputs.data[i][int(seq_len[i]) - 1].unsqueeze(dim=0).cpu().numpy()
+                targets = labels.data[i][:int(seq_len[i])].cpu().numpy()
+                prob = outputs.data[i][:int(seq_len[i])].cpu().numpy()
 
                 prediction = np.zeros(targets.shape)
                 prediction[np.arange(prediction.shape[0]), np.argmax(prob, axis=1)] = 1
@@ -184,8 +180,8 @@ def valid(weights):
 
                 # for AUC
                 for j in range(5):
-                    actual[j] = np.concatenate((actual[j], labels[i][int(seq_len[i])-1,j].view(-1).cpu().numpy()))
-                    predictions[j] = np.concatenate((predictions[j], outputs[i][int(seq_len[i])-1,j].view(-1).cpu().numpy()))
+                    actual[j] = np.concatenate((actual[j], labels[i][:int(seq_len[i]),j].view(-1).cpu().numpy()))
+                    predictions[j] = np.concatenate((predictions[j], outputs[i][:int(seq_len[i]),j].view(-1).cpu().numpy()))
 
         print(pos)
         # val_losses[epoch] = running_loss/len(val_loader)
@@ -233,8 +229,7 @@ if __name__ == '__main__':
     '''Transformer'''
     model = RT(input_size=189, d_model=args.dim, output_size=5, h=args.heads, rnn_type='RNN',
                 ksize=args.ksize, n=args.rnn, n_level=args.levels, dropout=args.drop, device=args.device).to(args.device)
-    # criterion = nn.CrossEntropyLoss(weight=loss_weights, ignore_index=-1)
-    criterion = nn.CrossEntropyLoss(ignore_index=-1)
+    criterion = nn.CrossEntropyLoss(weight=loss_weights, ignore_index=-1)
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr, betas=(args.b1, args.b2), weight_decay=args.l2)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=10, factor=0.1, verbose=False)
