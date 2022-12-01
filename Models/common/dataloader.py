@@ -33,7 +33,7 @@ class Dataset(data.Dataset):
         # y = x[:, -13:-8] # 5 year outlook
         # y = x[:, -8:-3] # 1 year outlook
         y = x[:, -13:-3]  # 5 year and 1 year outlook
-        x = x[:, :183]
+        x = x[:, :189]
 
         ''' for future use '''
         if self.inc_year:

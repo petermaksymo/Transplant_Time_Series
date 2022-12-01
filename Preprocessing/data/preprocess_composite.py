@@ -9,7 +9,7 @@ import torch
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 
-FEATURE_LIST = [
+SRTR_FEATURE_LIST = [
     'ACCUTE_REJ_EPISODE', 'REC_LIFE_SUPPORT_OTHER', 'CAN_AGE_AT_LISTING', 'CAN_GENDER',
     'DON_GENDER', 'CAN_LAST_SERUM_SODIUM', 'CAN_LAST_SERUM_CREAT', 'CAN_LAST_SRTR_LAB_MELD',
     'CAN_PREV_HL', 'CAN_PREV_HR', 'CAN_PREV_IN', 'CAN_PREV_KI', 'CAN_PREV_LU',
@@ -49,11 +49,22 @@ FEATURE_LIST = [
     'REC_DGN_4217', 'REC_DGN_4455', 'REC_DGN_4500'
 ]
 
+COMMON_FEATURES = [
+    'time_since_transplant', 'CAN_LAST_SERUM_SODIUM', 'TFL_TOT_BILI', 'TFL_ALKPHOS',
+    'TFL_SGOT', 'TFL_SGPT', 'TFL_INR', 'CAN_LAST_SRTR_LAB_MELD', 'TFL_BMI',
+    'CAN_LAST_SERUM_CREAT', 'DON_AGE', 'REC_AGE_AT_TX', 'TFL_REJ_EVENT_NUM',
+    'TFL_GRAFT_STAT', 'REC_FAIL_HEP_RECUR', 'REC_FAIL_VASC_THROMB', 'REC_DGN_4214',
+    'REC_DGN_4212', 'REC_DGN_4204', 'REC_DGN_4202', 'REC_DGN_4215', 'REC_DGN_4208',
+    'REC_DGN_4240', 'REC_DGN_4220', 'REC_DGN_4110', 'REC_DGN_4401',
+    'sirolimus_prescription', 'tacrolimus_prescription', 'cyclosporine_prescription'
+]
+
 CLASSES = ['lived', 'cardio', 'gf', 'cancer', 'inf']
 
 if __name__ == '__main__':
     prev_tx_li = pd.read_csv("./tx_li.csv", index_col=0, low_memory=False)
     prev_txf_li = pd.read_csv("./txf_li.csv", index_col=0, low_memory=False)
+    fol_immuno = pd.read_csv("./fol_immuno.csv", index_col=0, low_memory=False)
 
     # Filter out follow-up after the paper was published
     # prev_txf_li['TXF_DT'] = pd.to_datetime(prev_txf_li['TFL_PX_STAT_DT'], yearfirst=True)
@@ -185,8 +196,8 @@ if __name__ == '__main__':
                   "REC_TX_DT", "TFL_COD"]
 
     txf_vars = ["fol_yr", "TRR_ID", "TRR_FOL_ID", "TFL_COD", "TFL_COD2", "TFL_COD3", "TFL_CREAT",
-                 "TFL_INR", "TFL_REJ_EVENT_NUM", "TFL_SGOT", "TFL_SGPT", "TFL_TOT_BILI",
-                 "REC_TX_DT", "TFL_PX_STAT_DT", "TFL_FAIL_DT", "TFL_TXFER_DT"]
+                 "TFL_INR", "TFL_REJ_EVENT_NUM", "TFL_SGOT", "TFL_SGPT", "TFL_TOT_BILI", "TFL_ALKPHOS",
+                 "TFL_BMI", "REC_TX_DT", "TFL_PX_STAT_DT", "TFL_FAIL_DT", "TFL_TXFER_DT"]
 
     for name in tx_vars:
         tx_study = pd.concat([tx_study.reset_index(drop=True),
@@ -401,6 +412,24 @@ if __name__ == '__main__':
     tfl_malig = tfl_malig.replace(to_replace=-1, value=np.nan)
     txf_study['TFL_MALIG_is_na'] = tfl_malig.isna().max(axis=1).apply(lambda x: 0 if x == 0 else 1)
 
+    # Get prescriptions info
+    temp = pd.DataFrame()
+    temp['TRR_FOL_ID'] = fol_immuno['TRR_FOL_ID']
+
+    sir = fol_immuno.loc[fol_immuno['TFL_IMMUNO_DRUG_CD'].isin([6, 58])]
+    temp['sirolimus_prescription'] = sir['TFL_IMMUNO_DRUG_MAINT_CUR']
+    temp.groupby('TRR_FOL_ID')['sirolimus_prescription'].max()
+
+    tac = fol_immuno.loc[fol_immuno['TFL_IMMUNO_DRUG_CD'].isin([5, 53, 54, 59])]
+    temp['tacrolimus_prescription'] = tac['TFL_IMMUNO_DRUG_MAINT_CUR']
+    temp.groupby('TRR_FOL_ID')['tacrolimus_prescription'].max()
+
+    tac = fol_immuno.loc[fol_immuno['TFL_IMMUNO_DRUG_CD'].isin([-2, 46, 48])]
+    temp['cyclosporine_prescription'] = tac['TFL_IMMUNO_DRUG_MAINT_CUR']
+    temp.groupby('TRR_FOL_ID')['cyclosporine_prescription'].max()
+
+    temp = temp.fillna(0)
+    txf_study = txf_study.merge(temp, on='TRR_FOL_ID')
 
     def series_to_binary(series, pos, neg, na):
         d = {}
@@ -433,7 +462,7 @@ if __name__ == '__main__':
 
     def time_to_death(row):
         if pd.isna(row['PERS_OPTN_DEATH_DT']):
-            return 6
+            return 100
         fol = pd.to_datetime(row['TFL_PX_STAT_DT'])
         death = pd.to_datetime(row['PERS_OPTN_DEATH_DT'])
         diff = death - fol
@@ -475,14 +504,16 @@ if __name__ == '__main__':
     combined_data = pd.concat([combined_data.reset_index(drop=True), label5.reset_index(drop=True)], axis=1)
 
     trr_ids = combined_data['TRR_ID'].unique()
-    ids, split_data = {}, { 'train': {}, 'valid': {}, 'test': {} }
+    ids, split_data = {}, { 'train': {}, 'valid': {}, 'test': {}, 'prob_analysis': {} }
     for class_name in CLASSES:
         ids[class_name] = list(np.intersect1d(patients[class_name], trr_ids))
-        split_data['train'][class_name], other = train_test_split(ids[class_name], test_size=0.20, shuffle=True)
-        split_data['valid'][class_name], split_data['test'][class_name] = train_test_split(other, test_size=0.50, shuffle=True)
+        split_data['train'][class_name], other = train_test_split(ids[class_name], test_size=0.25, shuffle=True) #75% train
+        split_data['valid'][class_name], other = train_test_split(other, test_size=0.60, shuffle=True) #10% valid
+        split_data['test'][class_name], split_data['prob_analysis'][class_name] = train_test_split(other, test_size=0.33, shuffle=True) #10% test, 5% prob_analysis
         print(f'{class_name} train: {len(split_data["train"][class_name])}, '
               f'{class_name} valid: {len(split_data["valid"][class_name])}, '
-              f'{class_name} test: {len(split_data["test"][class_name])}')
+              f'{class_name} test: {len(split_data["test"][class_name])}, '
+              f'{class_name} prob_analysis: {len(split_data["prob_analysis"][class_name])}')
 
     for name, group in split_data.items():
         print(f'all {name}: {len([x for y in group.values() for x in y])}')
