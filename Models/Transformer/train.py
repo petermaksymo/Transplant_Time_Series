@@ -231,7 +231,7 @@ if __name__ == '__main__':
     print(loss_weights)
 
     '''Transformer'''
-    model = RT(input_size=183, d_model=args.dim, output_size=5, h=args.heads, rnn_type='RNN',
+    model = RT(input_size=189, d_model=args.dim, output_size=5, h=args.heads, rnn_type='RNN',
                 ksize=args.ksize, n=args.rnn, n_level=args.levels, dropout=args.drop, device=args.device).to(args.device)
     # criterion = nn.CrossEntropyLoss(weight=loss_weights, ignore_index=-1)
     criterion = nn.CrossEntropyLoss(ignore_index=-1)
