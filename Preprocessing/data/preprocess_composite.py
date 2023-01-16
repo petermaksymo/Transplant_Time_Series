@@ -9,6 +9,8 @@ import torch
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 
+DATASET = 'SRTR' # SRTR, BOTH -> both will only extract common features from SRTR found in UHN
+
 SRTR_FEATURE_LIST = [
     'ACCUTE_REJ_EPISODE', 'REC_LIFE_SUPPORT_OTHER', 'CAN_AGE_AT_LISTING', 'CAN_GENDER',
     'DON_GENDER', 'CAN_LAST_SERUM_SODIUM', 'CAN_LAST_SERUM_CREAT', 'CAN_LAST_SRTR_LAB_MELD',
@@ -57,6 +59,10 @@ COMMON_FEATURES = [
     'REC_DGN_4212', 'REC_DGN_4204', 'REC_DGN_4202', 'REC_DGN_4215', 'REC_DGN_4208',
     'REC_DGN_4240', 'REC_DGN_4220', 'REC_DGN_4110', 'REC_DGN_4401',
     'sirolimus_prescription', 'tacrolimus_prescription', 'cyclosporine_prescription'
+]
+
+UHN_FEATURES = [
+    'DONOR_AGE', 'R_AGE_TX', 
 ]
 
 CLASSES = ['lived', 'cardio', 'gf', 'cancer', 'inf']
@@ -527,6 +533,10 @@ if __name__ == '__main__':
 
     for col in drop:
         combined_data.drop(col, axis=1, inplace=True)
+
+    # Only take common features between SRTR and UHN
+    if DATASET == 'BOTH':
+        combined_data = combined_data[['TRR_ID'] + COMMON_FEATURES]
 
     # Forward fill null values
     combined_data = combined_data.replace(to_replace=-1, value=np.nan)
