@@ -5,7 +5,8 @@ from decimal import Decimal
 import re
 
 OTTR_PATH = '/home/peter/WebstormProjects/Transplant_Time_Series/OTTR_Data'
-PATIENT_ID =
+PATIENT_ID = 2158653
+BEFORE_DATE = '2014-09-15'
 
 if __name__ == '__main__':
   ottr_base = pd.read_csv(f"{OTTR_PATH}/OTTR_PAT_TRANSPLANT.csv", low_memory=False)
@@ -19,14 +20,18 @@ if __name__ == '__main__':
 
   # Filter down to test patient:
   ottr_labs = ottr_labs[ottr_labs['Patient ID'] == PATIENT_ID]
+  ottr_labs = ottr_labs[ottr_labs['Date of Lab'] <= BEFORE_DATE]
+
+  newest_date = ottr_labs['Date of Lab'].max()
+  time_diff = pd.Timestamp('2022-05-01') - pd.Timestamp(newest_date)
 
   # define fuzz function
   def fuzz_value(value):
     if isinstance(value, str) and '-' in value:
-      val = pd.Timestamp(value) + pd.DateOffset(days=np.random.randint(-14, 14))  # adjust -14 and 14 to control the degree of fuzziness
+      val = pd.Timestamp(value) + time_diff + pd.DateOffset(days=np.random.randint(-3, 3))  # adjust -14 and 14 to control the degree of fuzziness
       return pd.Timestamp(val).date()
     elif isinstance(value, str):
-      if re.search(r"[^\d.]", value) is not None:
+      if re.search(r"[^0-9.]+", value) is not None or value == '.':
         return pd.NA
 
       if "." in value:
@@ -52,8 +57,6 @@ if __name__ == '__main__':
 
   df = ottr_labs
 
-  print(df.dtypes)
-
   # Create an empty list to hold our data in JSON format
   data = []
 
@@ -77,5 +80,5 @@ if __name__ == '__main__':
       return str(object)
 
   # Write the data to a JSON file
-  with open('./test-patient.json', 'w') as f:
+  with open(f'./test-patient-{PATIENT_ID}.json', 'w') as f:
     json.dump(data, f, indent=4, default=np_encoder)

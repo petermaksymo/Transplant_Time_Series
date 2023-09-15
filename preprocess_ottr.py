@@ -1,10 +1,11 @@
+# All in one preprocessing script for OTTR data
+
 from dateutil.relativedelta import relativedelta
 import pandas as pd
 import numpy as np
 import json
 
 OTTR_PATH = '/home/peter/WebstormProjects/Transplant_Time_Series/OTTR_Data'
-
 
 def has_keyword(df, search_cols, keyword, case_sensitive=False):
   # If substrings is a string, convert it to a list with a single element
@@ -25,8 +26,7 @@ def has_keyword(df, search_cols, keyword, case_sensitive=False):
   # Convert the resulting boolean series to an integer series with 1's where the substring is present and 0's where it is not
   return keyword_checks.astype(int)
 
-
-if __name__ == '__main__':
+def preprocess_ottr(is_training=True):
   ottr_base = pd.read_csv(f"{OTTR_PATH}/OTTR_PAT_TRANSPLANT.csv", low_memory=False)
   ottr_labs = pd.read_csv(f"{OTTR_PATH}/OTTR_Labs.csv", low_memory=False)
   ottr_meds = pd.read_csv(f"{OTTR_PATH}/OTTR_MEDICATION.csv", low_memory=False)
@@ -39,15 +39,14 @@ if __name__ == '__main__':
                    "Tacrolimus trough level", "Cyclosporine trough level", "Sirolimus trough level"
                    ]
 
-  print(*ottr_labs['Weight'].unique(), sep='\n')
-  exit()
   ottr_base = ottr_base.drop(columns=['Sex', 'Donor Sex', 'DOB'])
 
   ottr_base["Primary Diagnosis"] = ottr_base["Primary Diagnosis"].str.lower()
   ottr_base["Secondary Diagnosis"] = ottr_base["Secondary Diagnosis"].str.lower()
 
   # Convert to integer
-  ottr_base['Donor type (deceased / living)'] = ottr_base['Donor type (deceased / living)'].replace({'living': 1, 'deceased': 0})
+  ottr_base['Donor type (deceased / living)'] = ottr_base['Donor type (deceased / living)'].replace(
+    {'living': 1, 'deceased': 0})
 
   def has_diagnosis(df, diagnosis):
     return has_keyword(df, ['Primary Diagnosis', 'Secondary Diagnosis'], diagnosis)
@@ -57,12 +56,14 @@ if __name__ == '__main__':
   ottr_base['Hepatitis C'] = has_diagnosis(ottr_base, 'Hepatitis C')
   ottr_base['Hepatitis B'] = has_diagnosis(ottr_base, 'Hepatitis B')
   ottr_base['Hepatitis B'] = has_diagnosis(ottr_base, 'Hepatitis B')
-  ottr_base['Autoimmune hepatitis cirrhosis'] = has_diagnosis(ottr_base, ['Autoimmune Hepatitis', 'Autoimmune Active Hepatitis', 'Cirrhosis -- Autoimmune'])
+  ottr_base['Autoimmune hepatitis cirrhosis'] = has_diagnosis(ottr_base,
+                                                              ['Autoimmune Hepatitis', 'Autoimmune Active Hepatitis',
+                                                               'Cirrhosis -- Autoimmune'])
   ottr_base['Primary Sclerosing Cholangitis'] = has_diagnosis(ottr_base, 'Primary Sclerosing Cholangitis')
   ottr_base['Primary Biliary Cholangitis'] = has_diagnosis(ottr_base, 'Primary Biliary Cholangitis')
   ottr_base['Alcoholic Cirrhosis'] = has_diagnosis(ottr_base, 'Alcoholic Cirrhosis')
   ottr_base['Fulminant Hepatic Failure'] = has_diagnosis(ottr_base, 'Fulminant Hepatic Failure')
-  ottr_base['Other Cirrhosis'] = has_diagnosis(ottr_base, 'Cirrhosis-Other') # TODO: improve this one
+  ottr_base['Other Cirrhosis'] = has_diagnosis(ottr_base, 'Cirrhosis-Other')  # TODO: improve this one
   ottr_base = ottr_base.drop(columns=['Primary Diagnosis', 'Secondary Diagnosis'])
 
   ottr_base['GF due to HBV/HCV'] = has_keyword(ottr_base, ['Reason Graft Failed'], ['Hepatitis', 'HCV'])
@@ -84,7 +85,7 @@ if __name__ == '__main__':
   ottr_follow_up['Systemic Hypertension'] = has_follow_up_diagnosis(ottr_follow_up, 'Hypertension')
   ottr_follow_up['Atrial Fibrillation'] = has_follow_up_diagnosis(ottr_follow_up, 'Atrial Fibrillation')
   ottr_follow_up['Pleural Effusion'] = has_follow_up_diagnosis(ottr_follow_up, 'Pleural Effusion')
-  ottr_follow_up['CMV Viremia'] = has_follow_up_diagnosis(ottr_follow_up, 'CMV Viremia') #potentiall more options?
+  ottr_follow_up['CMV Viremia'] = has_follow_up_diagnosis(ottr_follow_up, 'CMV Viremia')  # potentially more options?
   ottr_follow_up['Pneumonia'] = has_follow_up_diagnosis(ottr_follow_up, 'Pneumonia')
   ottr_follow_up['Shingles'] = has_follow_up_diagnosis(ottr_follow_up, 'Shingles')
   ottr_follow_up['UTI'] = has_follow_up_diagnosis(ottr_follow_up, 'UTI', True)
@@ -92,7 +93,8 @@ if __name__ == '__main__':
   ottr_follow_up['C.Difficile'] = has_follow_up_diagnosis(ottr_follow_up, 'difficile')
   ottr_follow_up['Osteoporosis'] = has_follow_up_diagnosis(ottr_follow_up, 'Osteoporosis')
   ottr_follow_up['Cholangitis'] = has_follow_up_diagnosis(ottr_follow_up, 'Cholangitis')
-  ottr_follow_up['Recurrent HCC'] = has_follow_up_diagnosis(ottr_follow_up, ['HCC Recurrence', 'Recurrent Hepatocellular Ca (HCC)'])
+  ottr_follow_up['Recurrent HCC'] = has_follow_up_diagnosis(ottr_follow_up,
+                                                            ['HCC Recurrence', 'Recurrent Hepatocellular Ca (HCC)'])
   ottr_follow_up['De novo malignancy'] = has_follow_up_diagnosis(ottr_follow_up, 'Malignancy - De Novo')
 
   # create a list of column names to exclude
@@ -104,9 +106,11 @@ if __name__ == '__main__':
   # filter the dataframe to exclude rows where all encoded values are 0
   ottr_follow_up = ottr_follow_up.loc[ottr_follow_up[diagnosis_cols].sum(axis=1) > 0]
 
+  print(ottr_base['Transplant Date'].unique())
   # convert the "Transplant Date" column to a datetime object and drop transplants newer than 5 years
   ottr_base['Transplant Date'] = pd.to_datetime(ottr_base['Transplant Date'])
-  ottr_base = ottr_base[ottr_base['Transplant Date'] <= ottr_base['Transplant Date'].max() - relativedelta(years=5)]
+  if is_training:
+    ottr_base = ottr_base[ottr_base['Transplant Date'] <= ottr_base['Transplant Date'].max() - relativedelta(years=5)]
 
   ottr_base["Date"] = pd.to_datetime(ottr_base["Transplant Date"]).dt.normalize()
   ottr_follow_up["Date"] = pd.to_datetime(ottr_follow_up["Diagnosis Date"]).dt.normalize()
@@ -140,54 +144,55 @@ if __name__ == '__main__':
 
   ottr_full = ottr_full.sort_values(['Patient ID', 'Days since Transplant'])
 
-  infection_keywords = [
-    'Recurrent Hepatitis C', 'PNEUMONIA', 'SEPSIS', 'HCV', 'INFECTION', 'PTLD', 'Septic Shock', 'SEPTICEMIA',
-    'COVID', 'Recurrent Hep C', 'SEPTICAEMIA', 'RECURRENT HEP B', 'ARDS', 'Primary Renal Disease',
-    'ACUTE PANCREATITIS', 'Invasive Aspergillus',
-  ]
-  graft_failure_keywords = [
-    'Liver Failure', 'REJECTION', 'Cirrhosis', 'Graft', 'LIVER COMPLICATIONS', 'Hepatorenal failure', 'Chronic Allograft Dysfunction',
-    'H.A.T.', 'HAT', 'H.A.T', 'HEPATIC ARTERY THROMBOSIS', 'HEPATIC ART THROMB'
-  ]
-  cancer_keywords = [
-    'CANCER', 'Carcinoma', 'LYMPHOMA', 'Mesothelioma', 'Malignancy', 'ADENOCARCINOMA', 'Recurrent HCC', 'LEUKEMIA',
-    'METASTATIC MELANOMA', 'MALIGNANT', 'Pancreatic Mass', 'TUMOR',
-  ]
-  cardiac_keywords = [
-    'STROKE', 'Aorticstenosis', 'HEART', 'M.I.', 'CARDIAC', 'CEREBROVASCULAR ACCIDENT', 'HEPATIC ARTERY ANEURYSM',
-    'Complications Following MI', 'MYOCARDIAL INFARCT', 'Cardiovascular', 'CORONARY ARTERY DIS', 'MYOCARDIAL INFARCTION',
-    'RUPTURED AORTIC ANEURYSM', 'MI.', 'Severe Aortic Stenosis', 'Massive CVA', 'Technical Failure - Other, RV Clot Thrombosis, Cardiogenic shock',
-  ]
+  if is_training:
+    infection_keywords = [
+      'Recurrent Hepatitis C', 'PNEUMONIA', 'SEPSIS', 'HCV', 'INFECTION', 'PTLD', 'Septic Shock', 'SEPTICEMIA',
+      'COVID', 'Recurrent Hep C', 'SEPTICAEMIA', 'RECURRENT HEP B', 'ARDS', 'Primary Renal Disease',
+      'ACUTE PANCREATITIS', 'Invasive Aspergillus',
+    ]
+    graft_failure_keywords = [
+      'Liver Failure', 'REJECTION', 'Cirrhosis', 'Graft', 'LIVER COMPLICATIONS', 'Hepatorenal failure',
+      'Chronic Allograft Dysfunction',
+      'H.A.T.', 'HAT', 'H.A.T', 'HEPATIC ARTERY THROMBOSIS', 'HEPATIC ART THROMB'
+    ]
+    cancer_keywords = [
+      'CANCER', 'Carcinoma', 'LYMPHOMA', 'Mesothelioma', 'Malignancy', 'ADENOCARCINOMA', 'Recurrent HCC', 'LEUKEMIA',
+      'METASTATIC MELANOMA', 'MALIGNANT', 'Pancreatic Mass', 'TUMOR',
+    ]
+    cardiac_keywords = [
+      'STROKE', 'Aorticstenosis', 'HEART', 'M.I.', 'CARDIAC', 'CEREBROVASCULAR ACCIDENT', 'HEPATIC ARTERY ANEURYSM',
+      'Complications Following MI', 'MYOCARDIAL INFARCT', 'Cardiovascular', 'CORONARY ARTERY DIS',
+      'MYOCARDIAL INFARCTION',
+      'RUPTURED AORTIC ANEURYSM', 'MI.', 'Severe Aortic Stenosis', 'Massive CVA',
+      'Technical Failure - Other, RV Clot Thrombosis, Cardiogenic shock',
+    ]
 
-  ottr_full['Cause of Death'] = ottr_full['Cause of Death'].fillna('')
-  ottr_full = ottr_full.loc[~ottr_full['Cause of Death'].str.lower().str.contains('functioning')]
-  ottr_full['Death from infection'] = has_keyword(ottr_full, ['Cause of Death'], infection_keywords)
-  ottr_full['Death from graft failure'] = has_keyword(ottr_full, ['Cause of Death'], graft_failure_keywords)
-  ottr_full['Death from cancer'] = has_keyword(ottr_full, ['Cause of Death'], cancer_keywords)
-  ottr_full['Death from cardiac'] = has_keyword(ottr_full, ['Cause of Death'], cardiac_keywords)
+    ottr_full['Cause of Death'] = ottr_full['Cause of Death'].fillna('')
+    ottr_full_non_func = ottr_full.loc[~ottr_full['Cause of Death'].str.lower().str.contains('functioning')]
+    ottr_full['Death from infection'] = has_keyword(ottr_full_non_func, ['Cause of Death'], infection_keywords)
+    ottr_full['Death from graft failure'] = has_keyword(ottr_full_non_func, ['Cause of Death'], graft_failure_keywords)
+    ottr_full['Death from cancer'] = has_keyword(ottr_full_non_func, ['Cause of Death'], cancer_keywords)
+    ottr_full['Death from cardiac'] = has_keyword(ottr_full_non_func, ['Cause of Death'], cardiac_keywords)
+
+    # Drop patients with uncategorized deaths
+    ottr_full = ottr_full[(ottr_full['Death from infection'] == 1) |
+                          (ottr_full['Death from graft failure'] == 1) |
+                          (ottr_full['Death from cancer'] == 1) |
+                          (ottr_full['Death from cardiac'] == 1) |
+                          (ottr_full['Date of Death'].isnull())]
+
   ottr_full = ottr_full.drop(columns='Cause of Death')
-
-  # Drop patients with uncategorized deaths
-  ottr_full = ottr_full[(ottr_full['Death from infection'] == 1) |
-                   (ottr_full['Death from graft failure'] == 1) |
-                   (ottr_full['Death from cancer'] == 1) |
-                   (ottr_full['Death from cardiac'] == 1) |
-                   (ottr_full['Date of Death'].isnull())]
 
   # reset the index
   ottr_full = ottr_full.reset_index(drop=True)
 
   grouped = ottr_full.groupby('Patient ID')
-  print(f"# of deaths from infection: {len(ottr_full[ottr_full['Death from infection']==1].groupby('Patient ID'))}")
-  print(f"# of deaths from graft failure: {len(ottr_full[ottr_full['Death from graft failure']==1].groupby('Patient ID'))}")
-  print(f"# of deaths from cancer: {len(ottr_full[ottr_full['Death from cancer']==1].groupby('Patient ID'))}")
-  print(f"# of deaths from cardiac: {len(ottr_full[ottr_full['Death from cardiac']==1].groupby('Patient ID'))}")
+  print(f"# of deaths from infection: {len(ottr_full[ottr_full['Death from infection'] == 1].groupby('Patient ID'))}")
+  print(
+    f"# of deaths from graft failure: {len(ottr_full[ottr_full['Death from graft failure'] == 1].groupby('Patient ID'))}")
+  print(f"# of deaths from cancer: {len(ottr_full[ottr_full['Death from cancer'] == 1].groupby('Patient ID'))}")
+  print(f"# of deaths from cardiac: {len(ottr_full[ottr_full['Death from cardiac'] == 1].groupby('Patient ID'))}")
   print(f"# of survive: {len(ottr_full[ottr_full['Date of Death'].isnull()].groupby('Patient ID'))}")
 
-  ottr_full.to_csv('./combined_ottr_data.csv', index=False)
-
-  # ottr_full = ottr_full[ottr_full['Patient ID'] == 852821]
-  # ottr_full = ottr_full.drop(columns=['Patient ID', 'Date of Death', 'Death from infection', 'Death from graft failure', 'Death from cancer', 'Death from cardiac'])
-  # ottr_full.to_json('./patient_inference_data.json', orient='records')
-
-
+if __name__ == '__main__':
+  preprocess_ottr()

@@ -103,6 +103,10 @@ def train(weights):
 
         # Compute loss for ALL masked inputs
         labels_1 = torch.where(labels[:,:,0] == -1, -1, labels.argmax(dim=2))
+
+        if len(outputs.shape) == 2:
+          outputs = outputs.unsqueeze(0)
+
         loss = criterion(outputs.permute(0, 2, 1), labels_1)
 
         # adjust weights and record loss
@@ -119,11 +123,6 @@ def train(weights):
             prediction[np.arange(prediction.shape[0]), np.argmax(prob, axis=1)] = 1
             match = (targets == prediction)
 
-            # print(targets)
-            # print(prob)
-            # print(match)
-            # exit()
-
             pos += np.sum(prediction,axis=0).astype(int)
             correct += np.sum(match,axis=0).astype(int)
             total += targets.shape[0]
@@ -139,7 +138,6 @@ def train(weights):
     train_auc[epoch] = get_aucs(actual, predictions)
     
 def valid(weights):
-    
     running_loss = 0
     correct = np.zeros(5)
     pos = np.zeros(5)
@@ -158,6 +156,9 @@ def valid(weights):
             # run network
             optimizer.zero_grad()
             outputs = model(batch)
+
+            if len(outputs.shape) == 2:
+              outputs = outputs.unsqueeze(0)
 
             # Compute loss for ALL masked inputs
             labels_1 = torch.where(labels[:,:,0] == -1, -1, labels.argmax(dim=2))
@@ -183,7 +184,6 @@ def valid(weights):
                     actual[j] = np.concatenate((actual[j], labels[i][:int(seq_len[i]),j].view(-1).cpu().numpy()))
                     predictions[j] = np.concatenate((predictions[j], outputs[i][:int(seq_len[i]),j].view(-1).cpu().numpy()))
 
-        print(pos)
         # val_losses[epoch] = running_loss/len(val_loader)
         val_losses[epoch] = running_loss
         val_acc[epoch] = correct/total

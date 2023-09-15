@@ -83,7 +83,7 @@ class MHPooling(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
 
         #auto-regressive
-        attn_shape = (1, 3000, 3000)
+        attn_shape = (1, 3000, 3000) # may need to increase this to accommodate longer time-series
         subsequent_mask =  np.triu(np.ones(attn_shape), k=1).astype('uint8')
         self.mask = (torch.from_numpy(subsequent_mask) == 0).unsqueeze(1).to(device)
         self.device = device

@@ -597,7 +597,7 @@ if __name__ == '__main__':
                 df = groups.get_group(i)
                 df = df.drop('TRR_ID', axis=1)
                 save_path = f'{dir_path}/{str(index)}.pt'
-                tensor = torch.tensor(df.values)
+                tensor = torch.tensor(df.values.astype(np.float64))
                 torch.save(tensor, save_path)
                 index += 1
 
